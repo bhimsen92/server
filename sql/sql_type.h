@@ -3238,6 +3238,59 @@ public:
 };
 
 
+enum vers_sys_type_t
+{
+  VERS_UNDEFINED= 0,
+  VERS_TIMESTAMP,
+  VERS_TRX_ID
+};
+
+
+class Vers_type_handler
+{
+protected:
+  Vers_type_handler() {}
+public:
+  virtual ~Vers_type_handler() {}
+  virtual vers_sys_type_t kind() const
+  {
+    DBUG_ASSERT(0);
+    return VERS_UNDEFINED;
+  }
+  virtual bool check_sys_fields(const LEX_CSTRING &table_name,
+                                const Column_definition *row_start,
+                                const Column_definition *row_end) const= 0;
+};
+
+
+class Vers_type_timestamp: public Vers_type_handler
+{
+public:
+  virtual vers_sys_type_t kind() const
+  {
+    return VERS_TIMESTAMP;
+  }
+  bool check_sys_fields(const LEX_CSTRING &table_name,
+                        const Column_definition *row_start,
+                        const Column_definition *row_end) const;
+};
+extern MYSQL_PLUGIN_IMPORT Vers_type_timestamp vers_type_timestamp;
+
+
+class Vers_type_trx: public Vers_type_handler
+{
+public:
+  virtual vers_sys_type_t kind() const
+  {
+    return VERS_TRX_ID;
+  }
+  bool check_sys_fields(const LEX_CSTRING &table_name,
+                        const Column_definition *row_start,
+                        const Column_definition *row_end) const;
+};
+extern MYSQL_PLUGIN_IMPORT Vers_type_trx vers_type_trx;
+
+
 class Type_handler
 {
 protected:
@@ -3897,8 +3950,7 @@ public:
   virtual bool
   Item_func_mod_fix_length_and_dec(Item_func_mod *func) const= 0;
 
-  virtual bool
-  Vers_history_point_resolve_unit(THD *thd, Vers_history_point *point) const;
+  virtual const Vers_type_handler *vers() const { return NULL; }
 };
 
 
@@ -4740,6 +4792,7 @@ public:
   bool Item_func_div_fix_length_and_dec(Item_func_div *) const;
   bool Item_func_mod_fix_length_and_dec(Item_func_mod *) const;
 
+  virtual const Vers_type_handler *vers() const override { return &vers_type_trx; }
 };
 
 
@@ -4752,7 +4805,7 @@ public:
   {
     return type_limits_int()->char_length();
   }
-  bool Vers_history_point_resolve_unit(THD *thd, Vers_history_point *p) const;
+  virtual const Vers_type_handler *vers() const { return &vers_type_trx; }
 };
 
 
@@ -4823,7 +4876,7 @@ public:
   bool Item_func_mul_fix_length_and_dec(Item_func_mul *) const;
   bool Item_func_div_fix_length_and_dec(Item_func_div *) const;
   bool Item_func_mod_fix_length_and_dec(Item_func_mod *) const;
-  bool Vers_history_point_resolve_unit(THD *thd, Vers_history_point *p) const;
+  virtual const Vers_type_handler *vers() const override { return &vers_type_timestamp; }
 };
 
 
@@ -4975,6 +5028,7 @@ public:
   bool Item_func_mul_fix_length_and_dec(Item_func_mul *) const override;
   bool Item_func_div_fix_length_and_dec(Item_func_div *) const override;
   bool Item_func_mod_fix_length_and_dec(Item_func_mod *) const override;
+  virtual const Vers_type_handler *vers() const override { return &vers_type_timestamp; }
 };
 
 
@@ -4982,7 +5036,6 @@ class Type_handler_general_purpose_string: public Type_handler_string_result
 {
 public:
   bool is_general_purpose_string_type() const { return true; }
-  bool Vers_history_point_resolve_unit(THD *thd, Vers_history_point *p) const;
 };
 
 
@@ -5381,6 +5434,7 @@ public:
                                             MYSQL_TIME *to,
                                             date_mode_t fuzzydate)
                                             const override;
+  virtual const Vers_type_handler *vers() const override { return NULL; }
 };
 
 
@@ -5436,8 +5490,6 @@ public:
                                    const Bit_addr &bit,
                                    const Column_definition_attributes *attr,
                                    uint32 flags) const override;
-  bool Vers_history_point_resolve_unit(THD *thd, Vers_history_point *p)
-                                       const override;
 };
 
 
@@ -6536,6 +6588,7 @@ public:
                                    const Bit_addr &bit,
                                    const Column_definition_attributes *attr,
                                    uint32 flags) const override;
+  virtual const Vers_type_handler *vers() const override { return &vers_type_timestamp; }
 };
 
 
@@ -6669,8 +6722,7 @@ public:
                                          const override;
   void Item_param_set_param_func(Item_param *param,
                                  uchar **pos, ulong len) const override;
-  bool Vers_history_point_resolve_unit(THD *thd, Vers_history_point *p)
-                                       const override;
+  virtual const Vers_type_handler *vers() const override { return NULL; }
 };
 
 
