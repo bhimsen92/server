@@ -2574,7 +2574,7 @@ bool Type_std_attributes::agg_item_set_converter(const DTCollation &coll,
      0 if an error occured
 */ 
 
-Item* Item_func_or_sum::build_clone(THD *thd)
+Item* Item_func_or_sum::build_clone(THD *thd, const Build_clone_prm &prm)
 {
   Item_func_or_sum *copy= (Item_func_or_sum *) get_copy(thd);
   if (unlikely(!copy))
@@ -2592,12 +2592,31 @@ Item* Item_func_or_sum::build_clone(THD *thd)
    
   for (uint i= 0; i < arg_count; i++)
   {
-    Item *arg_clone= args[i]->build_clone(thd);
+    Item *arg_clone= args[i]->build_clone(thd, prm);
     if (!arg_clone)
       return 0;
     copy->args[i]= arg_clone;
   }
   return copy;
+}
+
+int Item_func_or_sum::substitute_expr_with_vcol(Item::Subst_expr_prm *prm) {
+  // check if can replace whole current item
+  if (int repl = Item::substitute_expr_with_vcol(prm))
+  {
+    return repl;
+  }
+  // save item_ptr to restore it later
+  Item **tmp_item_ptr = prm->item_ptr;
+  int count = 0;
+  for (uint i = 0; i < arg_count; i++)
+  {
+    prm->item_ptr = &args[i];
+    count += args[i]->substitute_expr_with_vcol(prm);
+  }
+
+  prm->item_ptr = tmp_item_ptr;
+  return count;
 }
 
 Item_sp::Item_sp(THD *thd, Name_resolution_context *context_arg,
@@ -2874,13 +2893,13 @@ Item_sp::init_result_field(THD *thd, uint max_length, uint maybe_null,
      0 if an error occured
 */ 
 
-Item* Item_ref::build_clone(THD *thd)
+Item* Item_ref::build_clone(THD *thd, const Build_clone_prm &prm)
 {
   Item_ref *copy= (Item_ref *) get_copy(thd);
   if (unlikely(!copy) ||
       unlikely(!(copy->ref= (Item**) alloc_root(thd->mem_root,
                                                 sizeof(Item*)))) ||
-      unlikely(!(*copy->ref= (* ref)->build_clone(thd))))
+      unlikely(!(*copy->ref= (* ref)->build_clone(thd, prm))))
     return 0;
   return copy;
 }
@@ -7360,7 +7379,7 @@ Item *Item::build_pushable_cond(THD *thd,
     return new_cond;
   }
   else if (get_extraction_flag() != NO_EXTRACTION_FL)
-    return build_clone(thd);
+    return build_clone(thd, Build_clone_prm());
   return 0;
 }
 
@@ -7474,7 +7493,7 @@ Item *Item_field::derived_field_transformer_for_where(THD *thd, uchar *arg)
   Item *producing_item= find_producing_item(this, sel);
   if (producing_item)
   {
-    Item *producing_clone= producing_item->build_clone(thd);
+    Item *producing_clone= producing_item->build_clone(thd, Build_clone_prm());
     if (producing_clone)
       producing_clone->marker|= SUBSTITUTION_FL;
     return producing_clone;
@@ -7492,7 +7511,7 @@ Item *Item_direct_view_ref::derived_field_transformer_for_where(THD *thd,
     st_select_lex *sel= (st_select_lex *)arg;
     Item *producing_item= find_producing_item(this, sel);
     DBUG_ASSERT (producing_item != NULL);
-    return producing_item->build_clone(thd);
+    return producing_item->build_clone(thd, Build_clone_prm());
   }
   return (*ref);
 }
@@ -7505,7 +7524,7 @@ Item *Item_field::grouping_field_transformer_for_where(THD *thd, uchar *arg)
   if (gr_field)
   {
     Item *producing_clone=
-      gr_field->corresponding_item->build_clone(thd);
+      gr_field->corresponding_item->build_clone(thd, Build_clone_prm());
     if (producing_clone)
       producing_clone->marker|= SUBSTITUTION_FL;
     return producing_clone;
@@ -7528,7 +7547,7 @@ Item_direct_view_ref::grouping_field_transformer_for_where(THD *thd,
   st_select_lex *sel= (st_select_lex *)arg;
   Field_pair *gr_field= find_matching_field_pair(this,
                                                  sel->grouping_tmp_fields);
-  return gr_field->corresponding_item->build_clone(thd);
+  return gr_field->corresponding_item->build_clone(thd, Build_clone_prm());
 }
 
 void Item_field::print(String *str, enum_query_type query_type)
@@ -10482,4 +10501,21 @@ void Item::register_in(THD *thd)
 {
   next= thd->free_list;
   thd->free_list= this;
+}
+
+int Item::substitute_expr_with_vcol(Item::Subst_expr_prm *prm) {
+  Item* replacement = find_vfield_replacement(prm->thd, *prm->item_ptr, prm->vfield);
+  if (replacement)
+  {
+    *prm->item_ptr = replacement;
+    return 1;
+  }
+  return 0;
+}
+
+Item* Item::find_vfield_replacement(THD *thd, Item *item, Field* vfield)
+{
+  Item *vcol_expr = vfield->vcol_info->expr;
+  // fixing fields later in rewrite_expr_with_vfieds
+  return item->eq(vcol_expr, false) ? new (thd->mem_root) Item_field(thd, vfield) : NULL;
 }

@@ -763,6 +763,11 @@ public:
   enum cond_result { COND_UNDEF,COND_OK,COND_TRUE,COND_FALSE };
 
   enum traverse_order { POSTFIX, PREFIX };
+
+  struct Build_clone_prm
+  {
+    bool return_this_on_subselects = false;
+  };
   
   /* Cache of the result of is_expensive(). */
   int8 is_expensive_cache;
@@ -1567,7 +1572,7 @@ public:
   virtual bool is_order_clause_position() const { return false; }
   /* cloning of constant items (0 if it is not const) */
   virtual Item *clone_item(THD *thd) { return 0; }
-  virtual Item* build_clone(THD *thd) { return get_copy(thd); }
+  virtual Item* build_clone(THD *thd, const Build_clone_prm &prm) { return get_copy(thd); }
   virtual cond_result eq_cmp_result() const { return COND_OK; }
   inline uint float_length(uint decimals_par) const
   { return decimals < FLOATING_POINT_DECIMALS ? (DBL_DIG+2+decimals_par) : DBL_DIG+8;}
@@ -2009,6 +2014,7 @@ public:
     If there is some, sets a bit for this key in the proper key map.
   */
   virtual bool check_index_dependence(void *arg) { return 0; }
+  virtual bool rewrite_subselects_with_vfields_processor(void *arg) { return 0; }
   /*============== End of Item processor list ======================*/
 
   virtual Item *get_copy(THD *thd)=0;
@@ -2037,6 +2043,13 @@ public:
     uint count;
     int nest_level;
     bool collect;
+  };
+
+  struct Subst_expr_prm
+  {
+    THD *thd;
+    Item **item_ptr;
+    Field *vfield;
   };
 
   /*
@@ -2332,6 +2345,11 @@ public:
     Checks if this item consists in the left part of arg IN subquery predicate
   */
   bool pushable_equality_checker_for_subquery(uchar *arg);
+  /*
+   * returns number of replacements
+   */
+  virtual int substitute_expr_with_vcol(Item::Subst_expr_prm *prm);
+  Item* find_vfield_replacement(THD *thd, Item *item, Field* vfield);
 };
 
 MEM_ROOT *get_thd_memroot(THD *thd);
@@ -4999,7 +5017,8 @@ public:
   virtual bool fix_length_and_dec()= 0;
   bool const_item() const { return const_item_cache; }
   table_map used_tables() const { return used_tables_cache; }
-  Item* build_clone(THD *thd);
+  Item* build_clone(THD *thd, const Build_clone_prm &prm);
+  int substitute_expr_with_vcol(Item::Subst_expr_prm *prm);
 };
 
 class sp_head;
@@ -5234,7 +5253,7 @@ public:
     return (*ref)->is_outer_field();
   }
   
-  Item* build_clone(THD *thd);
+  Item* build_clone(THD *thd, const Build_clone_prm &prm);
 
   /**
     Checks if the item tree that ref points to contains a subquery.
@@ -5496,7 +5515,7 @@ public:
   }
   Item *get_copy(THD *thd)
   { return get_item_copy<Item_cache_wrapper>(thd, this); }
-  Item *build_clone(THD *thd) { return 0; }
+  Item *build_clone(THD *thd, const Build_clone_prm &prm) { return 0; }
 };
 
 
