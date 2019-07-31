@@ -35,7 +35,8 @@ select * from information_schema.system_variables
           'version_comment',
           'version_source_revision',
           'version_compile_machine', 'version_compile_os',
-          'version_malloc_library', 'version_ssl_library', 'version'
+          'version_malloc_library', 'version_ssl_library', 'version',
+          'pmem_append_cache_file', 'pmem_append_cache_size'
         )
   order by variable_name;
 
