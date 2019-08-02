@@ -9727,10 +9727,11 @@ best_extension_by_limited_search(JOIN      *join,
           'join' is either the best partial QEP with 'search_depth' relations,
           or the best complete QEP so far, whichever is smaller.
         */
-        if (join->sort_by_table &&
-            join->sort_by_table !=
-            join->positions[join->const_tables].table->table
-            && !nest_created)
+        if (!nest_created && !join->emb_sjm_nest &&
+            ((join->sort_by_table &&
+              join->sort_by_table !=
+              join->positions[join->const_tables].table->table) ||
+              !join->need_order_nest()))
         {
           /*
              We may have to make a temp table, note that this is only a

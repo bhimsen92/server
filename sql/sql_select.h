@@ -1792,6 +1792,7 @@ public:
     6) Window Functions
     7) Using Rollup
     8) Using SQL_BUFFER_RESULT
+    9) Only Select queries can use the sort nest
   */
 
   bool need_order_nest()
@@ -1800,7 +1801,8 @@ public:
             ((select_distinct || group_list) || having  ||
              MY_TEST(select_options & OPTION_BUFFER_RESULT))) ||
             (rollup.state != ROLLUP::STATE_NONE && select_distinct) ||
-            select_lex->window_specs.elements > 0 || select_lex->agg_func_used());
+            select_lex->window_specs.elements > 0 || select_lex->agg_func_used()
+            || thd->lex->sql_command != SQLCOM_SELECT);
   }
   bool choose_subquery_plan(table_map join_tables);
   void get_partial_cost_and_fanout(int end_tab_idx,
