@@ -29270,7 +29270,7 @@ bool needs_filesort(JOIN_TAB *tab, uint idx, int index_used)
     return TRUE;
 
   TABLE *table= tab->table;
-  if (index_used >= 0)
+  if (index_used >= 0 && index_used < MAX_KEY)
    return !table->keys_in_use_for_order_by.is_set(index_used);
   return TRUE;
 }
