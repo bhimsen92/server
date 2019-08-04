@@ -134,6 +134,8 @@ static int join_tab_cmp_straight(const void *dummy, const void* ptr1, const void
 static int join_tab_cmp_embedded_first(const void *emb, const void* ptr1, const void *ptr2);
 C_MODE_END
 static uint cache_record_length(JOIN *join,uint index);
+static ulong cache_record_length_for_nest(JOIN *join,uint index);
+
 static store_key *get_store_key(THD *thd,
 				KEYUSE *keyuse, table_map used_tables,
 				KEY_PART_INFO *key_part, uchar *key_buff,
@@ -5512,6 +5514,7 @@ make_join_statistics(JOIN *join, List<TABLE_LIST> &tables_list,
       */
       add_group_and_distinct_keys(join, s);
       find_keys_that_can_achieve_ordering(join, s);
+      s->get_estimated_record_length();
 
       s->table->cond_selectivity= 1.0;
 
@@ -9769,6 +9772,24 @@ best_extension_by_limited_search(JOIN      *join,
 }
 
 
+ulong JOIN_TAB::get_estimated_record_length()
+{
+  if (used_rec_length_for_nest)
+    return used_rec_length_for_nest;
+
+  Field **f_ptr, *field;
+  MY_BITMAP *read_set= table->read_set;
+  ulong rec_length= 0;
+  for (f_ptr=table->field ; (field= *f_ptr) ; f_ptr++)
+  {
+    if (bitmap_is_set(read_set, field->field_index))
+      rec_length+=field->pack_length();
+  }
+  used_rec_length_for_nest= rec_length;
+  return used_rec_length_for_nest;
+}
+
+
 /**
   Find how much space the prevous read not const tables takes in cache.
 */
@@ -9986,6 +10007,22 @@ cache_record_length(JOIN *join,uint idx)
   return length;
 }
 
+
+static ulong
+cache_record_length_for_nest(JOIN *join,uint idx)
+{
+  uint length=0;
+  JOIN_TAB **pos,**end;
+
+  for (pos=join->best_ref+join->const_tables,end=join->best_ref+idx ;
+       pos != end ;
+       pos++)
+  {
+    JOIN_TAB *join_tab= *pos;
+    length+= join_tab->get_estimated_record_length();
+  }
+  return length;
+}
 
 /*
   Get the number of different row combinations for subset of partial join

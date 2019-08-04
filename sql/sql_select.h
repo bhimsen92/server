@@ -367,6 +367,7 @@ typedef struct st_join_table {
   uint		used_fields;
   ulong         used_fieldlength;
   ulong         max_used_fieldlength;
+  ulong         used_rec_length_for_nest;
   uint          used_blobs;
   uint          used_null_fields;
   uint          used_uneven_bit_fields;
@@ -618,6 +619,7 @@ typedef struct st_join_table {
     return tmp_select_cond;
   }
   void calc_used_field_length(bool max_fl);
+  ulong get_estimated_record_length();
   ulong get_used_fieldlength()
   {
     if (!used_fieldlength)
