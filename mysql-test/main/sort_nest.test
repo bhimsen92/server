@@ -191,3 +191,72 @@ eval explain format=json $query;
 eval $query;
 
 drop table t1,t2,t3,t0;
+
+--echo Derived table inside a sort-nest
+
+CREATE TABLE t1 (f1 varchar(1), f2 varchar(1), KEY (f2));
+INSERT INTO t1 VALUES
+('r','x'), ('x','x'), ('x','x'), ('r','x'), ('x','x');
+
+CREATE TABLE t2 (f1 varchar(1), f2 varchar(1));
+INSERT INTO t2 VALUES ('s','x');
+
+CREATE TABLE t3 (f1 varchar(1), f2 varchar(1), KEY (f2));
+INSERT INTO t3 VALUES
+(NULL,'x'), (NULL,'f'), ('t','x'), (NULL,'j'), ('g','x');
+
+CREATE TABLE t4 (f1 int, f2 varchar(1), KEY (f2,f1)) ;
+INSERT INTO t4 VALUES (2,'x'), (1,'x');
+
+let $query= SELECT t.f1 as f
+            FROM (SELECT DISTINCT t1.* FROM t1,t2 WHERE t2.f2 = t1.f2) t,t3,t4
+            WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f;
+
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+--echo should use the sort-nest too like the query above
+
+let $query= SELECT t4.f1 as f, t.f1 as g
+            FROM (SELECT DISTINCT t1.* FROM t1,t2 WHERE t2.f2 = t1.f2) t,t3,t4
+            WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f,g;
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+drop table t1,t2,t3,t4;
+
+--echo views inside a sort-nest
+create table t0 (x int);
+create table t1 (a int);
+create table t2 (b int, c int default 0);
+
+insert t0 (x) values (0),(10);
+insert t1 (a) values (1), (2);
+insert t2 (b) values (1), (2); 
+
+create view v1 as select t2.b,t2.c from t1, t2
+where t1.a=t2.b and t2.b < 3 with check option;
+
+let $query= select * from v1,t0 where b<3 and x=c order by x,b desc limit 2;
+eval explain $query;
+eval explain format=json $query;
+eval select * from v1,t0 where b<3 and x=c order by x,b desc limit 2;
+drop table t0,t1,t2;
+drop view v1;
+
+--echo # Primary key considered as the key that could achieve ordering
+
+create table t1 (id char(32) NOT NULL primary key);
+insert into t1 values (0), (1), (2), (3), (4), (5), (6), (7), (8), (9);
+create table t2 (id char(32) NOT NULL primary key);
+insert into t2 values (0), (1), (2), (3);
+
+let $query= select t1.id from t1 INNER JOIN t2 on t1.id=t2.id order by t2.id limit 2;
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+drop table t1,t2;
+
