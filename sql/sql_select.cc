@@ -4813,6 +4813,15 @@ void substitute_base_to_nest_items(JOIN *join)
         }
       }
     }
+
+    if (*tab->on_expr_ref)
+    {
+      item= (*tab->on_expr_ref)->transform(join->thd,
+                                           &Item::replace_with_nest_items,
+                                           (uchar *) &arg);
+      *tab->on_expr_ref= item;
+      (*tab->on_expr_ref)->update_used_tables();
+    }
   }
   substitute_base_to_nest_items2(join, &join->conds);
 }
