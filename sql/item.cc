@@ -6157,6 +6157,23 @@ Item *Item_field::replace_equal_field(THD *thd, uchar *arg)
 }
 
 
+/*
+  Replace any Item_field object with the item in the nest table.
+  This is needed to substitute the item that are evaluated in the
+  post ORDER BY context that is when a sort-nest was created
+  and the ordering was already done.
+
+  @param arg   NULL or points to so the structure REPLACE_NEST_FIELD_ARG
+
+  @note
+    This function is supposed to be called as a callback parameter in calls
+    of the transformer method.
+
+  @return
+    - pointer to the nest items corresponding to the current item
+    - this - otherwise.
+*/
+
 Item *Item_field::replace_with_nest_items(THD *thd, uchar *arg)
 {
   REPLACE_NEST_FIELD_ARG* param= (REPLACE_NEST_FIELD_ARG*)arg;

@@ -106,6 +106,9 @@ void opt_trace_print_expanded_query(THD *thd, SELECT_LEX *select_lex,
 
 void add_table_scan_values_to_trace(THD *thd, JOIN_TAB *tab);
 void add_sort_nest_tables_to_trace(JOIN *join);
+void trace_sort_nest(JOIN *join, uint idx, table_map remaining_tables);
+void trace_plan_prefix(JOIN *join, uint idx, table_map remaining_tables);
+
 
 /*
   Security related (need to add a proper comment here)

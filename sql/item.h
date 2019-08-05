@@ -1899,7 +1899,7 @@ public:
   virtual bool excl_dep_on_table(table_map tab_map) { return false; }
 
   /*
-    TRUE if the expression depends only on the table indicated by tab_map
+    TRUE if the expression depends only on the tables indicated by tab_map.
     Not to be used for AND/OR formulas.
   */
   virtual bool excl_dep_on_nest(table_map tab_map) { return false; }

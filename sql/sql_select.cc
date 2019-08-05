@@ -125,8 +125,6 @@ static bool best_extension_by_limited_search(JOIN *join,
                                              table_map previous_tables,
                                              bool nest_created,
                                              double *cardinality);
-void trace_plan_prefix(JOIN *join, uint idx, table_map remaining_tables);
-void trace_order_by_nest(JOIN *join, uint idx, table_map remaining_tables);
 static uint determine_search_depth(JOIN* join);
 C_MODE_START
 static int join_tab_cmp(const void *dummy, const void* ptr1, const void* ptr2);
@@ -313,11 +311,6 @@ static double table_cond_selectivity(JOIN *join, uint idx, JOIN_TAB *s,
 void set_postjoin_aggr_write_func(JOIN_TAB *tab);
 
 static Item **get_sargable_cond(JOIN *join, TABLE *table);
-
-void substitute_base_to_nest_items(JOIN *join);
-void substitute_base_to_nest_items2(JOIN *join, Item **cond);
-void check_cond_extraction_for_nest(THD *thd, Item *cond,
-                                    Pushdown_checker checker, uchar* arg);
 
 #ifndef DBUG_OFF
 
@@ -2478,9 +2471,12 @@ int JOIN::optimize_stage2()
   if (setup_semijoin_loosescan(this))
     DBUG_RETURN(1);
 
-  if (setup_sort_nest(this))
-    DBUG_RETURN(1);
-  substitute_base_to_nest_items(this);
+  if (sort_nest_needed())
+  {
+    if (setup_sort_nest(this))
+      DBUG_RETURN(1);
+    substitute_base_with_nest_items(this);
+  }
 
   if (make_join_select(this, select, conds))
   {
@@ -4765,10 +4761,48 @@ static Item **get_sargable_cond(JOIN *join, TABLE *table)
   return retval;
 }
 
-void substitute_base_to_nest_items(JOIN *join)
+
+/*
+  Substitute base table items with nest's table items
+
+  SYNOPSIS
+
+  substitute_base_with_nest_items()
+    @param join          the join handler
+
+  DESCRIPTION
+    Substitute base table items for the tables inside the nest
+    with the nest items. This is needed when an expression needs
+    to be evaluated in the post ORDER BY context
+
+    Example
+    select * from t1,t2,t3
+      where t1.a=t2.a and t2.b=t3.b
+      order by t1.a,t2.a limit 5;
+
+    let's say in this case the join order is t1,t2,t3 and this uses a
+    sort-nest. So the actual representation would be sort_nest(t1,t2),t3.
+
+    Now look at this equality condition t2.b = t3.b, this would
+    be evaluated in the post ORDER BY context. So t2.b should
+    actually refer to the sort-nest items instead of base table items.
+    This is why we need to substitute base table items with sort-nest items.
+
+    For the equality condition t1.a = t2.a there is no need for substitution
+    as this condition is internal to the nest, that is this condition will be
+    evaluated in the pre ORDER BY context.
+
+    This function does the substitution for
+      - WHERE clause
+      - SELECT LIST
+      - ORDER BY clause
+      - ON expression
+      - REF access items
+
+*/
+void substitute_base_with_nest_items(JOIN *join)
 {
-  if (!join->sort_nest_needed())
-    return;
+  THD *thd= join->thd;
   SORT_NEST_INFO *sort_nest_info= join->sort_nest_info;
   REPLACE_NEST_FIELD_ARG arg= {join};
 
@@ -4776,15 +4810,25 @@ void substitute_base_to_nest_items(JOIN *join)
   Item *item, *new_item;
   while ((item= it++))
   {
-    if ((new_item= item->transform(join->thd,
+    if ((new_item= item->transform(thd,
                                    &Item::replace_with_nest_items,
-                                  (uchar *) &arg)) != item)
+                                   (uchar *) &arg)) != item)
       {
         new_item->name= item->name;
         it.replace(new_item);
       }
     new_item->update_used_tables();
   }
+
+  ORDER *ord;
+  for (ord= join->order; ord ; ord=ord->next)
+  {
+    item= ord->item[0];
+    item= item->transform(thd, &Item::replace_with_nest_items, (uchar *)&arg);
+    item->update_used_tables();
+    ord->item[0]= item;
+  }
+
   JOIN_TAB *end_tab= sort_nest_info->nest_tab;
   uint i, j;
   for (i= join->const_tables + sort_nest_info->n_tables, j=0;
@@ -4823,13 +4867,55 @@ void substitute_base_to_nest_items(JOIN *join)
       (*tab->on_expr_ref)->update_used_tables();
     }
   }
-  substitute_base_to_nest_items2(join, &join->conds);
+
+  extract_condition_for_the_nest(join);
+  Item *conds= join->conds;
+  if (conds)
+  {
+    conds= conds->transform(join->thd, &Item::replace_with_nest_items,
+                            (uchar *) &arg);
+    conds->update_used_tables();
+  }
+  join->conds= conds;
 }
 
-void substitute_base_to_nest_items2(JOIN *join, Item **cond)
+
+/*
+  Extract from the WHERE clause the part which is internal to the sort-nest
+
+  SYNOPSIS
+  extract_condition_for_the_nest()
+    @param join          the join handler
+
+  DESCRIPTION
+    Extract the condition from the WHERE clause that can be evaluated by the
+    tables inside the sort-nest.
+
+  Example
+    select * from t1,t2,t3
+      where t1.a=t2.a and t2.b=t3.b
+      order by t1.a,t2.a limit 5;
+
+    let's say in this case the join order is t1,t2,t3 and this uses a
+    sort-nest. So the actual representation would be sort_nest(t1,t2),t3.
+
+    The WHERE clause is t1.a=t2.a and t2.b=t3.b, so here we like to extract
+    the condition t1.a=t2.a from the WHERE clause because it can be evaluated
+    in the pre ORDER BY contest by the tables that would be in the sort-nest.
+
+    The extracted condition is stored inside the structure SORT_NEST_INFO.
+    Also we remove the extracted condition from the WHERE clause.
+
+    So after this call the
+    Extracted condition would be t1.a=t2.a and the
+    WHERE clause would be t2.b=t3.b
+
+*/
+
+void extract_condition_for_the_nest(JOIN *join)
 {
   SORT_NEST_INFO *sort_nest_info= join->sort_nest_info;
-  Item *orig_cond= *cond;
+  Item *orig_cond= join->conds;
   if (!sort_nest_info)
     return;
   THD *thd= join->thd;
@@ -4861,20 +4947,36 @@ void substitute_base_to_nest_items2(JOIN *join, Item **cond)
     orig_cond= remove_pushed_top_conjuncts(thd, orig_cond);
     sort_nest_info->nest_cond= extracted_cond;
   }
-
-  REPLACE_NEST_FIELD_ARG arg= {join};
-  if (orig_cond)
-  {
-    orig_cond= orig_cond->transform(join->thd, &Item::replace_with_nest_items,
-                                    (uchar *) &arg);
-    orig_cond->update_used_tables();
-  }
-  *cond= orig_cond;
+  join->conds= orig_cond;
 }
 
-/*
-  Add a transformer to this call so that we dont have both
-  check_cond_extraction_for_nest and check_cond_extraction_for_grouping_fields
+
+/**
+  @brief
+   For a condition check possibility of exraction a formula over sort-nest
+   base table items
+
+  @param thd      The thread handle
+  @param cond     The condition whose subformulas are to be analyzed
+  @param checker  The checker callback function to be applied to the nodes
+                  of the tree of the object
+
+  @details
+    This method traverses the AND-OR condition cond and for each subformula of
+    the condition it checks whether it can be usable for the extraction of a
+    condition over the sort_nest base tables.
+    The method uses the call-back parameter checker to check whether a
+    primary formula depends only on the sort-nest tables or not.
+    The subformulas that are not usable are marked with the
+    flag NO_EXTRACTION_FL.
+    The subformulas that can be entierly extracted are marked with the flag
+    FULL_EXTRACTION_FL.
+
+  @note
+    The flag NO_EXTRACTION_FL set in a subformula allows to avoid
+    building clone for the subformula which cannot be extracted.
+    The flag FULL_EXTRACTION_FL allows to delete later all top level conjuncts
+    from cond.
 */
 
 void
@@ -4926,6 +5028,211 @@ check_cond_extraction_for_nest(THD *thd, Item *cond,
       FULL_EXTRACTION_FL : NO_EXTRACTION_FL;
     cond->set_extraction_flag(fl);
   }
+}
+
+
+/*
+  Propgate all the multiple equalites for the order by items,
+  so that one can use them to generate QEP that would
+  also take into consideration equality propagation.
+
+  Example
+    select * from t1,t2 where t1.a=t2.a order by t1.a
+
+  So the possible join orders would be:
+
+  t1 join t2 then sort
+  t2 join t1 then sort
+  t1 sort(t1) join t2
+  t2 sort(t2) join t1 => this is only possible when equality propagation is
+                         performed
+
+  @param join           JOIN handler
+  @param sort_order     the ORDER BY clause
+*/
+
+void propagate_equal_field_for_orderby(JOIN *join, ORDER *first_order)
+{
+  ORDER *order;
+  for (order= first_order; order; order= order->next)
+  {
+    if (optimizer_flag(join->thd, OPTIMIZER_SWITCH_ORDERBY_EQ_PROP) &&
+        join->cond_equal)
+    {
+      Item *item= order->item[0];
+      /*
+        TODO: equality substitution in the context of ORDER BY is
+        sometimes allowed when it is not allowed in the general case.
+        We make the below call for its side effect: it will locate the
+        multiple equality the item belongs to and set item->item_equal
+        accordingly.
+      */
+      (void)item->propagate_equal_fields(join->thd,
+                                         Value_source::
+                                         Context_identity(),
+                                         join->cond_equal);
+    }
+  }
+}
+
+
+/*
+  Checks if by considering the current join_tab
+  would the prefix of the join order satisfy
+  the ORDER BY clause.
+
+  @param join             JOIN handler
+  @param join_tab         joined table to check if addition of this
+                          table in the join order would achieve
+                          the ordering
+  @param previous_tables  table_map for all the tables in the prefix
+                          of the current partial plan
+
+  @retval
+   TRUE   ordering is achieved with the addition of new table
+   FALSE  ordering not achieved
+*/
+
+bool check_join_prefix_contains_ordering(JOIN *join, JOIN_TAB *tab,
+                                         table_map previous_tables)
+{
+  ORDER *order;
+  for (order= join->order; order; order= order->next)
+  {
+    Item *order_item= order->item[0];
+    table_map order_tables=order_item->used_tables();
+    if (!(order_tables & ~previous_tables) ||
+         (order_item->excl_dep_on_table(previous_tables | tab->table->map)))
+      continue;
+    else
+      return FALSE;
+  }
+  return TRUE;
+}
+
+
+/*
+  Setup the sort-nest struture
+
+  SYNOPSIS
+
+  setup_sort_nest()
+    @param join          the join handler
+
+  DESCRIPTION
+    Setup execution structures for sort-nest materialization:
+    - Create the list of Items that are needed by the sort-nest
+    - Create the materialization temporary table for the sort-nest
+
+  @retval
+    TRUE   : In case of error
+    FALSE  : Nest creation successful
+*/
+
+bool setup_sort_nest(JOIN *join)
+{
+
+  SORT_NEST_INFO* sort_nest_info= join->sort_nest_info;
+  THD *thd= join->thd;
+  Field_iterator_table field_iterator;
+
+  JOIN_TAB *start_tab= join->join_tab+join->const_tables, *j, *tab;
+  tab= sort_nest_info->nest_tab;
+  sort_nest_info->nest_tables_map= 0;
+
+  if (unlikely(thd->trace_started()))
+    add_sort_nest_tables_to_trace(join);
+
+  /*
+    Here a list of base table items are created that are needed to be stored
+    inside the temporary table of the sort-nest. Currently Item_field objects
+    are created for the base table fields that are set in the bitmap of
+    read_set.
+    TODO: in final implementation we can try to remove the fields from this
+    list that are completely internal to the nest as they are not needed
+    in the post ORDER BY context.
+  */
+
+  for (j= start_tab; j < tab; j++)
+  {
+    TABLE *table= j->table;
+    field_iterator.set_table(table);
+    sort_nest_info->nest_tables_map|= table->map;
+    for (; !field_iterator.end_of_fields(); field_iterator.next())
+    {
+      Field *field= field_iterator.field();
+      if (!bitmap_is_set(table->read_set, field->field_index))
+        continue;
+      Item *item;
+      if (!(item= field_iterator.create_item(thd)))
+        return TRUE;
+      sort_nest_info->nest_base_table_cols.push_back(item, thd->mem_root);
+    }
+  }
+
+  ORDER *order= join->order;
+  /*
+    Substitute the ORDER by items with the best field so that equality
+    propagation considered during best_access_path can be used.
+  */
+  for (order= join->order; order; order=order->next)
+  {
+    Item *item= order->item[0];
+    item= substitute_for_best_equal_field(thd, NO_PARTICULAR_TAB, item,
+                                          join->cond_equal,
+                                          join->map2table, true);
+    item->update_used_tables();
+    order->item[0]= item;
+  }
+
+  DBUG_ASSERT(!tab->table);
+
+  uint sort_nest_elements= sort_nest_info->nest_base_table_cols.elements;
+  sort_nest_info->tmp_table_param.init();
+  sort_nest_info->tmp_table_param.bit_fields_as_long= TRUE;
+  sort_nest_info->tmp_table_param.field_count= sort_nest_elements;
+  sort_nest_info->tmp_table_param.force_not_null_cols= FALSE;
+
+  const LEX_CSTRING order_nest_name= { STRING_WITH_LEN("sort-nest") };
+  if (!(tab->table= create_tmp_table(thd, &sort_nest_info->tmp_table_param,
+                                     sort_nest_info->nest_base_table_cols,
+                                     (ORDER*) 0,
+                                     FALSE /* distinct */,
+                                     0, /*save_sum_fields*/
+                                     thd->variables.option_bits |
+                                     TMP_TABLE_ALL_COLUMNS,
+                                     HA_POS_ERROR /*rows_limit */,
+                                     &order_nest_name)))
+    return TRUE; /* purecov: inspected */
+
+  tab->table->map= sort_nest_info->nest_tables_map;
+  sort_nest_info->table= tab->table;
+  tab->type= JT_ALL;
+  tab->table->reginfo.join_tab= tab;
+
+  /*
+    The list of temp table items created here, these are needed for the
+    substitution for items that would be evaluated in POST SORT NEST context
+  */
+  field_iterator.set_table(tab->table);
+  for (; !field_iterator.end_of_fields(); field_iterator.next())
+  {
+    Field *field= field_iterator.field();
+    Item *item;
+    if (!(item= new (thd->mem_root)Item_temptable_field(thd, field)))
+      return TRUE;
+    sort_nest_info->nest_temp_table_cols.push_back(item, thd->mem_root);
+  }
+
+  /*
+    Setting up the scan on the temp table
+  */
+  tab->read_first_record= join_init_read_record;
+  tab->read_record.read_record_func= rr_sequential;
+  tab[-1].next_select= end_nest_materialization;
+  sort_nest_info->materialized= FALSE;
+
+  return FALSE;
 }
 
 
@@ -5383,7 +5690,6 @@ make_join_statistics(JOIN *join, List<TABLE_LIST> &tables_list,
   join->sort_by_table= get_sort_by_table(join->order, join->group_list,
                                          join->select_lex->leaf_tables,
                                          join->const_table_map);
-
   /* 
     Update info on indexes that can be used for search lookups as
     reading const tables may has added new sargable predicates. 
@@ -7361,7 +7667,9 @@ double matching_candidates_in_table(JOIN_TAB *s, bool with_found_constraint,
   @param pos              OUT Table access plan
   @param loose_scan_pos   OUT Table plan that uses loosescan, or set cost to 
                               DBL_MAX if not possible.
-
+  @param index_used       OUT returns the index number that was used to access
+                              the table in s
+                              -1 if no index is used
   @return
     None
 */
@@ -9380,31 +9688,6 @@ double table_cond_selectivity(JOIN *join, uint idx, JOIN_TAB *s,
 }
 
 
-void trace_plan_prefix(JOIN *join, uint idx, table_map remaining_tables)
-{
-  THD *const thd= join->thd;
-  Json_writer_array plan_prefix(thd, "plan_prefix");
-  for (uint i= 0; i < idx; i++)
-  {
-    TABLE_LIST *const tr= join->positions[i].table->tab_list;
-    if (!(tr->map & remaining_tables))
-      plan_prefix.add_table_name(join->positions[i].table);
-  }
-}
-
-void trace_order_by_nest(JOIN *join, uint idx, table_map remaining_tables)
-{
-  THD *const thd= join->thd;
-  Json_writer_array plan_prefix(thd, "order_by_nest");
-  for (uint i= 0; i < idx; i++)
-  {
-    TABLE *tr= join->positions[i].table->table;
-    if (tr->map & remaining_tables)
-      plan_prefix.add_table_name(join->positions[i].table);
-  }
-
-}
-
 /**
   Find a good, possibly optimal, query execution plan (QEP) by a possibly
   exhaustive search.
@@ -9601,7 +9884,7 @@ best_extension_by_limited_search(JOIN      *join,
         trace_plan_prefix(join, idx, remaining_tables);
         trace_one_table.add_table_name(s);
         if (nest_created)
-          trace_order_by_nest(join, idx, previous_tables);
+          trace_sort_nest(join, idx, previous_tables);
       }
 
       /* Find the best access method from 's' to the current partial plan */
@@ -9704,14 +9987,14 @@ best_extension_by_limited_search(JOIN      *join,
         trace_rest.end();
 
         if (!nest_created && !join->emb_sjm_nest && join->order && nest_allow &&
-            !join->need_order_nest() &&
+            join->sort_nest_allowed() &&
             check_join_prefix_contains_ordering(join, s, previous_tables))
         {
           join->positions[idx].sort_nest_operation_here= TRUE;
           double cost= 0;
           if (needs_filesort(s, idx, index_used))
           {
-            cost= postjoin_oper_cost(join, partial_join_cardinality,
+            cost= sort_nest_oper_cost(join, partial_join_cardinality,
                                      AVG_REC_LEN, idx);
             current_read_time= COST_ADD(current_read_time, cost);
             trace_one_table.add("cost_of_sorting", cost);
@@ -9739,18 +10022,19 @@ best_extension_by_limited_search(JOIN      *join,
           'join' is either the best partial QEP with 'search_depth' relations,
           or the best complete QEP so far, whichever is smaller.
         */
-        if (!nest_created && !join->emb_sjm_nest &&
+        (void)cache_record_length_for_nest(join, idx);
+        if (!nest_created &&
             ((join->sort_by_table &&
               join->sort_by_table !=
               join->positions[join->const_tables].table->table) ||
-              !join->need_order_nest()))
+              (join->order && join->sort_nest_allowed())))
         {
           /*
              We may have to make a temp table, note that this is only a
              heuristic since we cannot know for sure at this point.
              Hence it may be wrong.
           */
-          double cost= postjoin_oper_cost(join, partial_join_cardinality, AVG_REC_LEN, idx);
+          double cost= sort_nest_oper_cost(join, partial_join_cardinality, AVG_REC_LEN, idx);
           trace_one_table.add("cost_of_sorting", cost);
           current_read_time= COST_ADD(current_read_time, cost);
         }
@@ -14508,198 +14792,6 @@ ORDER *simple_remove_const(ORDER *order, COND *where)
   return first;
 }
 
-
-/*
-  This function basically tries to propgate all the multiple equalites
-  for the order by items, so that one can use them to generate QEP that would
-  also take into consideration equality propagation.
-  Example
-    select * from t1,t2 where t1.a=t2.a order by t1.a
-
-  So the possible join orders would be:
-
-  t1 join t2 then sort
-  t2 join t1 then sort
-  t1 sort(t1) join t2
-  t2 sort(t2) join t1 => this is only possible when equality propagation is
-                         performed
-*/
-void propagate_equal_field_for_orderby(JOIN *join, ORDER *first_order)
-{
-  ORDER *order;
-  for (order= first_order; order; order= order->next)
-  {
-    if (optimizer_flag(join->thd, OPTIMIZER_SWITCH_ORDERBY_EQ_PROP) &&
-        join->cond_equal)
-    {
-      Item *item= order->item[0];
-      /*
-        TODO: equality substitution in the context of ORDER BY is
-        sometimes allowed when it is not allowed in the general case.
-        We make the below call for its side effect: it will locate the
-        multiple equality the item belongs to and set item->item_equal
-        accordingly.
-      */
-      (void)item->propagate_equal_fields(join->thd,
-                                         Value_source::
-                                         Context_identity(),
-                                         join->cond_equal);
-    }
-  }
-}
-
-/*
-  This function checks if by considering the current join_tab
-  would we be able to achieve the ordering
-*/
-
-bool check_join_prefix_contains_ordering(JOIN *join, JOIN_TAB *tab,
-                                         table_map previous_tables)
-{
-  ORDER *order;
-  for (order= join->order; order; order= order->next)
-  {
-    Item *order_item= order->item[0];
-    table_map order_tables=order_item->used_tables();
-    if (!(order_tables & ~previous_tables) ||
-         (order_item->excl_dep_on_table(previous_tables | tab->table->map)))
-      continue;
-    else
-      return FALSE;
-  }
-  return TRUE;
-}
-
-
-bool setup_sort_nest(JOIN *join)
-{
-  if (!join->sort_nest_needed())
-    return FALSE;
-
-  /*
-    The sort nest is only needed when there are more than one table
-    in the sort nest, else we can just sort with the first table if the
-    sort nest has only one table
-  */
-  SORT_NEST_INFO* sort_nest_info= join->sort_nest_info;
-  THD *thd= join->thd;
-  Field_iterator_table field_iterator;
-
-  JOIN_TAB *start_tab= join->join_tab+join->const_tables, *j, *tab;
-  tab= sort_nest_info->nest_tab;
-  sort_nest_info->nest_tables_map= 0;
-
-  if (unlikely(thd->trace_started()))
-    add_sort_nest_tables_to_trace(join);
-
-  /* This needs to be added to JOIN  structure, looks the best option or we
-     can have a seperate struture NEST_INFO to hold it.
-     Final Implementation here should just walk over the where clause and collect
-     the field for which we should have a temp table field
-  */
-
-  for (j= start_tab; j < tab; j++)
-  {
-    TABLE *table= j->table;
-    field_iterator.set_table(table);
-    sort_nest_info->nest_tables_map|= table->map;
-    for (; !field_iterator.end_of_fields(); field_iterator.next())
-    {
-      Field *field= field_iterator.field();
-      if (!bitmap_is_set(table->read_set, field->field_index))
-        continue;
-      Item *item;
-      if (!(item= field_iterator.create_item(thd)))
-        return TRUE;
-      sort_nest_info->nest_base_table_cols.push_back(item, thd->mem_root);
-    }
-  }
-
-  uint non_order_fields= sort_nest_info->nest_base_table_cols.elements;
-  ORDER *order= join->order;
-
-  /*
-    Order by items need to be in the temp table ,we can avoid the Field items in
-    the order by list but we need to fields inside the temp table for expressions
-  */
-  for (order= join->order; order; order=order->next)
-  {
-    Item *item= order->item[0];
-    Item *res= substitute_for_best_equal_field(thd, NO_PARTICULAR_TAB, item,
-                                               join->cond_equal,
-                                               join->map2table, true);
-    res->update_used_tables();
-    sort_nest_info->nest_base_table_cols.push_back(res, thd->mem_root);
-  }
-
-  DBUG_ASSERT(!tab->table);
-
-  sort_nest_info->tmp_table_param.init();
-  sort_nest_info->tmp_table_param.bit_fields_as_long= TRUE;
-  sort_nest_info->tmp_table_param.field_count= sort_nest_info->nest_base_table_cols.elements;
-  sort_nest_info->tmp_table_param.force_not_null_cols= FALSE;
-
-  const LEX_CSTRING order_nest_name= { STRING_WITH_LEN("order-nest") };
-  if (!(tab->table= create_tmp_table(thd, &sort_nest_info->tmp_table_param,
-                                     sort_nest_info->nest_base_table_cols, (ORDER*) 0,
-                                     FALSE /* distinct */,
-                                     0, /*save_sum_fields*/
-                                     thd->variables.option_bits | TMP_TABLE_ALL_COLUMNS,
-                                     HA_POS_ERROR /*rows_limit */,
-                                     &order_nest_name)))
-    return TRUE; /* purecov: inspected */
-
-  tab->table->map= sort_nest_info->nest_tables_map;
-  sort_nest_info->table= tab->table;
-  tab->type= JT_ALL;
-
-  /*
-    The list of temp table items created here, these are needed for the substitution
-    for items that would be evaluated in POST SORT NEST context
-  */
-  field_iterator.set_table(tab->table);
-  for (; !field_iterator.end_of_fields(); field_iterator.next())
-  {
-    Field *field= field_iterator.field();
-    Item *item;
-    if (!(item= new (thd->mem_root)Item_temptable_field(thd, field)))
-      return TRUE;
-    sort_nest_info->nest_temp_table_cols.push_back(item, thd->mem_root);
-  }
-
-  /*
-    Here we substitute order by items with the items of the temp table
-  */
-  List_iterator_fast<Item> it(sort_nest_info->nest_temp_table_cols);
-  Item *item;
-  order= join->order;
-  uint i=0;
-  while ((item= it++))
-  {
-    if (i++ < non_order_fields)
-      continue;
-    order->item[0]= item;
-    order= order->next;
-  }
-  tab->table->reginfo.join_tab= tab;
-
-  /*
-    Create mapping between base table to temp table
-    Need a key-value structure
-    would like to have base_table_field ----> temp_table_item mapping
-    We can use a hash-set that we already have in the file sql-hset.h
-  */
-
-  /*
-    Setting up the scan on the temp table
-  */
-  tab->read_first_record= join_init_read_record;
-  tab->read_record.read_record_func= rr_sequential;
-  tab[-1].next_select= end_nest_materialization;
-  sort_nest_info->materialized= FALSE;
-
-  return FALSE;
-}
 
 static int
 return_zero_rows(JOIN *join, select_result *result, List<TABLE_LIST> &tables,
@@ -26648,7 +26740,7 @@ bool JOIN_TAB::save_explain_data(Explain_table_access *eta,
   {
     size_t len= my_snprintf(table_name_buffer,
                          sizeof(table_name_buffer)-1,
-                         "<order-nest>");
+                         "<sort-nest>");
     eta->table_name.copy(table_name_buffer, len, cs);
   }
   else
@@ -27028,7 +27120,7 @@ bool JOIN_TAB::save_explain_data(Explain_table_access *eta,
           char namebuf[NAME_LEN];
           /* Derived table name generation */
           size_t len= my_snprintf(namebuf, sizeof(namebuf)-1,
-                               "<order-nest>");
+                               "<sort-nest>");
           eta->firstmatch_table_name.append(namebuf, len);
         }
         else
@@ -29257,13 +29349,38 @@ select_handler *SELECT_LEX::find_select_handler(THD *thd)
   return 0;
 }
 
-double postjoin_oper_cost(JOIN *join, double join_record_count, uint rec_len, uint idx)
+
+/*
+  Calcualte the cost of adding a sort-nest to the join.
+
+  SYNOPSIS
+
+  sort_nest_oper_cost()
+    @param join          the join handler
+
+  @param
+    join                the join handler
+    join_record_count   the cardinalty of the partial join
+    rec_len             length of the record in the sort-nest table
+
+  DESCRIPTION
+    The calculation for the cost of the sort-nest is done here, the cost
+    included three components
+      - Filling the sort-nest table
+      - Sorting the sort-nest table
+      - Reading from the sort-nest table
+
+*/
+
+
+double sort_nest_oper_cost(JOIN *join, double join_record_count, uint rec_len, uint idx)
 {
   THD *thd= join->thd;
   double cost= 0;
   /*
-    For only one table in the order_nest, we don't need a fill the temp table, we can
-    just read the data into the filesort buffer and read the sorted data from the buffers.
+    The sort-nest table is not created for sorting when one does sorting
+    on the first non-const table. So for this case we don't need to add
+    the cost of filling the table.
   */
   if (idx != join->const_tables)
     cost=  get_tmp_table_write_cost(thd, join_record_count,rec_len) *
@@ -29292,6 +29409,11 @@ double calculate_record_count_for_sort_nest(JOIN *join, uint n_tables)
 }
 
 
+/*
+  @brief
+  Find all keys for the table inside join_tab that would satisfy
+  the ORDER BY clause
+*/
 void find_keys_that_can_achieve_ordering(JOIN *join, JOIN_TAB *tab)
 {
   if (!join->order)
@@ -29308,7 +29430,15 @@ void find_keys_that_can_achieve_ordering(JOIN *join, JOIN_TAB *tab)
   table->keys_in_use_for_order_by.intersect(keys_with_ordering);
 }
 
+/*
+  @brief
+  Checks if the partial plan needs filesort for ordering or an index
+  picked by best_access_path achieves the ordering
 
+  @retval
+    TRUE  : Filesort is needed
+    FALSE : index access satifies the ordering
+*/
 bool needs_filesort(JOIN_TAB *tab, uint idx, int index_used)
 {
   JOIN *join= tab->join;

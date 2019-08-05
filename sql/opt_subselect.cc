@@ -458,7 +458,6 @@ void best_access_path(JOIN *join, JOIN_TAB *s,
                              bool disable_jbuf, double record_count,
                              POSITION *pos, POSITION *loose_scan_pos,
                              int *index_used);
-void trace_plan_prefix(JOIN *join, uint idx, table_map remaining_tables);
 
 static Item *create_subq_in_equalities(THD *thd, SJ_MATERIALIZATION_INFO *sjm, 
                                 Item_in_subselect *subq_pred);
@@ -5525,13 +5524,18 @@ enum_nested_loop_state join_tab_execution_startup(JOIN_TAB *tab)
       sjm->materialized= TRUE;
     }
   }
-  /*
-    This should be the place to add the sub_select call for the
-    prefix of the join order
-  */
-
   else if (tab->is_sort_nest)
   {
+    /*
+      This is where the sort-nest gets filled by the partial join.
+      This would compute the partial join and write the records
+      in the temporary table.
+    */
+
+    /*
+      TODO(varun): this can be move to the SJM nest when the handling
+      of sort-nest is done with a bush
+    */
     enum_nested_loop_state rc;
     JOIN *join= tab->join;
     SORT_NEST_INFO *nest_info= join->sort_nest_info;

@@ -298,9 +298,9 @@
 
 
 /**
-  Average record length is the number of bytes for the record, it is just a rough guess, needs
-  this to calculate cost of filling and reading the temp table
-
+  Average record length is the number of bytes for the record.
+  It is just a rough estimates which is needed to calculate
+  the cost of filling, reading and sorting the temporary table.
 */
 #define AVG_REC_LEN  50
 

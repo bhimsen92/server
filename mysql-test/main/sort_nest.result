@@ -78,7 +78,7 @@ explain select * from t1,t2,t3 where t1.a > 95 and  t1.a=t2.a and t1.b = t3.a or
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	100	Using where
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	102	Using where; Using join buffer (flat, BNL join)
-1	SIMPLE	<order-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
+1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
 1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
 explain format=json select * from t1,t2,t3 where t1.a > 95 and  t1.a=t2.a and t1.b = t3.a order by t2.b;
 EXPLAIN
@@ -106,9 +106,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`order-nest`.b",
+        "sort_key": "`sort-nest`.b",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 10200,
           "filtered": 100
@@ -120,7 +120,7 @@ EXPLAIN
       "access_type": "ALL",
       "rows": 1000,
       "filtered": 100,
-      "attached_condition": "t3.a = `order-nest`.b"
+      "attached_condition": "t3.a = `sort-nest`.b"
     }
   }
 }
@@ -137,7 +137,7 @@ order by t1.a, t2.b limit 5;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	100	
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	102	Using where; Using join buffer (flat, BNL join)
-1	SIMPLE	<order-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
+1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
 1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
 explain format=json select * from t1,t2,t3 where (t3.a<2 and  t2.a <2) or (t1.b > 98 and t3.b > 98)
 order by t1.a, t2.b limit 5;
@@ -165,9 +165,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`order-nest`.a, `order-nest`.b",
+        "sort_key": "`sort-nest`.a, `sort-nest`.b",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 10200,
           "filtered": 100
@@ -179,7 +179,7 @@ EXPLAIN
       "access_type": "ALL",
       "rows": 1000,
       "filtered": 100,
-      "attached_condition": "t3.a < 2 and `order-nest`.a < 2 or `order-nest`.b > 98 and t3.b > 98"
+      "attached_condition": "t3.a < 2 and `sort-nest`.a < 2 or `sort-nest`.b > 98 and t3.b > 98"
     }
   }
 }
@@ -199,7 +199,7 @@ order by t1.a,t2.b limit 5;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	100	
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	102	Using join buffer (flat, BNL join)
-1	SIMPLE	<order-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
+1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
 1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
 explain format=json select * from t1,t2,t3 where (t3.a<2  and t2.a <2) or (f1(t1.b) > 98 and t3.b > 98)
 order by t1.a,t2.b limit 5;
@@ -226,9 +226,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`order-nest`.a, `order-nest`.b",
+        "sort_key": "`sort-nest`.a, `sort-nest`.b",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 10200,
           "filtered": 100
@@ -240,7 +240,7 @@ EXPLAIN
       "access_type": "ALL",
       "rows": 1000,
       "filtered": 100,
-      "attached_condition": "t3.a < 2 and `order-nest`.a < 2 or f1(`order-nest`.b) > 98 and t3.b > 98"
+      "attached_condition": "t3.a < 2 and `sort-nest`.a < 2 or f1(`sort-nest`.b) > 98 and t3.b > 98"
     }
   }
 }
@@ -335,7 +335,7 @@ order by t1.b desc, t2.a desc limit 3;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	100	
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	102	Using join buffer (flat, BNL join)
-1	SIMPLE	<order-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
+1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
 1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
 explain format=json select t3.b, t2.a , t1.b , t1.a  from t1,t2,t3 where t1.b=t3.b
 order by t1.b desc, t2.a desc limit 3;
@@ -362,9 +362,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`order-nest`.b desc, `order-nest`.a desc",
+        "sort_key": "`sort-nest`.b desc, `sort-nest`.a desc",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 10200,
           "filtered": 100
@@ -376,7 +376,7 @@ EXPLAIN
       "access_type": "ALL",
       "rows": 1000,
       "filtered": 100,
-      "attached_condition": "t3.b = `order-nest`.b"
+      "attached_condition": "t3.b = `sort-nest`.b"
     }
   }
 }
@@ -391,7 +391,7 @@ order by t3.b desc, t2.a desc limit 3;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	100	
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	102	Using join buffer (flat, BNL join)
-1	SIMPLE	<order-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
+1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
 1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
 select * from INFORMATION_SCHEMA.OPTIMIZER_TRACE;
 QUERY	TRACE	MISSING_BYTES_BEYOND_MAX_MEM_SIZE	INSUFFICIENT_PRIVILEGES
@@ -420,9 +420,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`order-nest`.b desc, `order-nest`.a desc",
+        "sort_key": "`sort-nest`.b desc, `sort-nest`.a desc",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 10200,
           "filtered": 100
@@ -434,7 +434,7 @@ EXPLAIN
       "access_type": "ALL",
       "rows": 1000,
       "filtered": 100,
-      "attached_condition": "t3.b = `order-nest`.b"
+      "attached_condition": "t3.b = `sort-nest`.b"
     }
   }
 }
@@ -453,7 +453,7 @@ order by t3.b+1 desc, t2.a desc limit 3;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	100	
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	102	Using join buffer (flat, BNL join)
-1	SIMPLE	<order-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
+1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
 1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
 explain format=json select t3.b, t2.a , t1.b , t1.a  from t1,t2,t3 where t1.b=t3.b
 order by t3.b+1 desc, t2.a desc limit 3;
@@ -480,9 +480,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "tmp_field desc, `order-nest`.a desc",
+        "sort_key": "`sort-nest`.b + 1 desc, `sort-nest`.a desc",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 10200,
           "filtered": 100
@@ -494,7 +494,7 @@ EXPLAIN
       "access_type": "ALL",
       "rows": 1000,
       "filtered": 100,
-      "attached_condition": "t3.b = `order-nest`.b"
+      "attached_condition": "t3.b = `sort-nest`.b"
     }
   }
 }
@@ -515,10 +515,10 @@ order by t1.b desc, t2.a desc limit 3;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	filtered	Extra
 1	SIMPLE	t1	ALL	a	NULL	NULL	NULL	100	97.00	Using where
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	102	100.00	Using join buffer (flat, BNL join)
-1	SIMPLE	<order-nest>	ALL	NULL	NULL	NULL	NULL	9894	100.00	Using filesort
+1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	9894	100.00	Using filesort
 1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	1000	100.00	Using where
 Warnings:
-Note	1003	select `test`.`t3`.`b` AS `b`,`order-nest`.`a` AS `a`,`order-nest`.`b` AS `b`,`order-nest`.`a` AS `a` from `test`.`t1` join `test`.`t2` join `test`.`t3` where `test`.`t3`.`b` = `order-nest`.`b` order by `order-nest`.`b` desc,`order-nest`.`a` desc limit 3
+Note	1003	select `test`.`t3`.`b` AS `b`,`sort-nest`.`a` AS `a`,`sort-nest`.`b` AS `b`,`sort-nest`.`a` AS `a` from `test`.`t1` join `test`.`t2` join `test`.`t3` where `test`.`t3`.`b` = `sort-nest`.`b` order by `sort-nest`.`b` desc,`sort-nest`.`a` desc limit 3
 alter table t1 drop key a;
 #
 # With having clause we can't have a sort-nest
@@ -585,7 +585,7 @@ order by t2.b,t1.b limit 5;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	100	Using where
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	102	Using where; Using join buffer (flat, BNL join)
-1	SIMPLE	<order-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
+1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
 1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
 explain format=json select * from t1,t2,t3 where t1.a > 95 and  t1.a=t2.a and t1.b = t3.a
 order by t2.b,t1.b limit 5;
@@ -614,9 +614,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`order-nest`.b, `order-nest`.b",
+        "sort_key": "`sort-nest`.b, `sort-nest`.b",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 10200,
           "filtered": 100
@@ -628,7 +628,7 @@ EXPLAIN
       "access_type": "ALL",
       "rows": 1000,
       "filtered": 100,
-      "attached_condition": "t3.a = `order-nest`.b"
+      "attached_condition": "t3.a = `sort-nest`.b"
     }
   }
 }
@@ -656,8 +656,8 @@ explain select * from t2,t1 where t1.a in (select max(t3.a) from t3 group by t3.
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	5	
 1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	5	Using join buffer (flat, BNL join)
-1	PRIMARY	<order-nest>	ALL	NULL	NULL	NULL	NULL	25	Using filesort
-1	PRIMARY	<subquery2>	eq_ref	distinct_key	distinct_key	4	order-nest.a	1	
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	25	Using filesort
+1	PRIMARY	<subquery2>	eq_ref	distinct_key	distinct_key	4	sort-nest.a	1	
 2	MATERIALIZED	t3	ALL	NULL	NULL	NULL	NULL	1000	Using temporary
 explain format=json select * from t2,t1 where t1.a in (select max(t3.a) from t3 group by t3.b) order by t2.a,t1.a limit 5;
 EXPLAIN
@@ -683,9 +683,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`order-nest`.a, `order-nest`.a",
+        "sort_key": "`sort-nest`.a, `sort-nest`.a",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 25,
           "filtered": 100
@@ -699,7 +699,7 @@ EXPLAIN
       "key": "distinct_key",
       "key_length": "4",
       "used_key_parts": ["max(t3.a)"],
-      "ref": ["order-nest.a"],
+      "ref": ["sort-nest.a"],
       "rows": 1,
       "filtered": 100,
       "materialized": {
@@ -732,7 +732,7 @@ explain select * from t3,t2 where t3.a in (select max(t1.a) from t1 group by t1.
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	5	
 1	PRIMARY	<subquery2>	ALL	distinct_key	NULL	NULL	NULL	5	Using join buffer (flat, BNL join)
-1	PRIMARY	<order-nest>	ALL	NULL	NULL	NULL	NULL	25	Using filesort
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	25	Using filesort
 1	PRIMARY	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
 2	MATERIALIZED	t1	ALL	NULL	NULL	NULL	NULL	5	Using temporary
 explain format=json select * from t3,t2 where t3.a in (select max(t1.a) from t1 group by t1.b) order by t3.a,t2.a limit 5;
@@ -774,9 +774,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`order-nest`.`max(t1.a)`, `order-nest`.a",
+        "sort_key": "`sort-nest`.`max(t1.a)`, `sort-nest`.a",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 25,
           "filtered": 100
@@ -788,7 +788,7 @@ EXPLAIN
       "access_type": "ALL",
       "rows": 1000,
       "filtered": 100,
-      "attached_condition": "t3.a = `order-nest`.`max(t1.a)`"
+      "attached_condition": "t3.a = `sort-nest`.`max(t1.a)`"
     }
   }
 }
@@ -817,8 +817,8 @@ WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t4	index	f2	f2	9	NULL	2	Using where; Using index
 1	PRIMARY	<derived2>	ref	key1	key1	4	test.t4.f2	2	
-1	PRIMARY	<order-nest>	ALL	NULL	NULL	NULL	NULL	4	Using filesort
-1	PRIMARY	t3	ref	f2	f2	4	order-nest.f2	2	Using index
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	4	Using filesort
+1	PRIMARY	t3	ref	f2	f2	4	sort-nest.f2	2	Using index
 2	DERIVED	t2	system	NULL	NULL	NULL	NULL	1	Using temporary
 2	DERIVED	t1	ALL	f2	NULL	NULL	NULL	5	Using where
 explain format=json SELECT t.f1 as f
@@ -874,9 +874,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`order-nest`.f",
+        "sort_key": "`sort-nest`.f1",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 4,
           "filtered": 100
@@ -890,7 +890,7 @@ EXPLAIN
       "key": "f2",
       "key_length": "4",
       "used_key_parts": ["f2"],
-      "ref": ["order-nest.f2"],
+      "ref": ["sort-nest.f2"],
       "rows": 2,
       "filtered": 100,
       "using_index": true
@@ -914,8 +914,8 @@ WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f,g;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t4	index	f2	f2	9	NULL	2	Using where; Using index
 1	PRIMARY	<derived2>	ref	key1	key1	4	test.t4.f2	2	
-1	PRIMARY	<order-nest>	ALL	NULL	NULL	NULL	NULL	4	Using filesort
-1	PRIMARY	t3	ref	f2	f2	4	order-nest.f2	2	Using index
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	4	Using filesort
+1	PRIMARY	t3	ref	f2	f2	4	sort-nest.f2	2	Using index
 2	DERIVED	t2	system	NULL	NULL	NULL	NULL	1	Using temporary
 2	DERIVED	t1	ALL	f2	NULL	NULL	NULL	5	Using where
 explain format=json SELECT t4.f1 as f, t.f1 as g
@@ -971,9 +971,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`order-nest`.f, `order-nest`.g",
+        "sort_key": "`sort-nest`.f1, `sort-nest`.f1",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 4,
           "filtered": 100
@@ -987,7 +987,7 @@ EXPLAIN
       "key": "f2",
       "key_length": "4",
       "used_key_parts": ["f2"],
-      "ref": ["order-nest.f2"],
+      "ref": ["sort-nest.f2"],
       "rows": 2,
       "filtered": 100,
       "using_index": true
@@ -1018,7 +1018,7 @@ explain select * from v1,t0 where b<3 and x=c order by x,b desc limit 2;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	2	Using where
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	2	Using where; Using join buffer (flat, BNL join)
-1	SIMPLE	<order-nest>	ALL	NULL	NULL	NULL	NULL	4	Using filesort
+1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	4	Using filesort
 1	SIMPLE	t0	ALL	NULL	NULL	NULL	NULL	2	Using where
 explain format=json select * from v1,t0 where b<3 and x=c order by x,b desc limit 2;
 EXPLAIN
@@ -1046,9 +1046,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`order-nest`.c, `order-nest`.a desc",
+        "sort_key": "`sort-nest`.c, `sort-nest`.a desc",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 4,
           "filtered": 100
@@ -1060,7 +1060,7 @@ EXPLAIN
       "access_type": "ALL",
       "rows": 2,
       "filtered": 100,
-      "attached_condition": "t0.x = `order-nest`.c"
+      "attached_condition": "t0.x = `sort-nest`.c"
     }
   }
 }
@@ -1131,7 +1131,7 @@ order by t2.a desc,t1.a desc limit 5;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	10	
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	10	Using join buffer (flat, BNL join)
-1	SIMPLE	<order-nest>	ALL	NULL	NULL	NULL	NULL	100	Using filesort
+1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	100	Using filesort
 1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
 explain format=json select * from t2,t1 left join t3 on t3.a=t1.b
 order by t2.a desc,t1.a desc limit 5;
@@ -1159,9 +1159,9 @@ EXPLAIN
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`order-nest`.a desc, `order-nest`.a desc",
+        "sort_key": "`sort-nest`.a desc, `sort-nest`.a desc",
         "table": {
-          "table_name": "<order-nest>",
+          "table_name": "<sort-nest>",
           "access_type": "ALL",
           "rows": 100,
           "filtered": 100
@@ -1173,7 +1173,7 @@ EXPLAIN
       "access_type": "ALL",
       "rows": 1000,
       "filtered": 100,
-      "attached_condition": "trigcond(t3.a = `order-nest`.b)"
+      "attached_condition": "trigcond(t3.a = `sort-nest`.b)"
     }
   }
 }

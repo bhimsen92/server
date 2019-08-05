@@ -289,14 +289,13 @@ typedef struct st_join_table {
 
   /* TRUE <=> This join_tab is inside an SJM bush and is the last leaf tab here */
   bool          last_leaf_in_bush;
-
+  
   /*
     ptr  - this is a bush, and ptr points to description of child join_tab
            range
     NULL - this join tab has no bush children
   */
   JOIN_TAB_RANGE *bush_children;
-  JOIN_TAB_RANGE *order_nest_children;
   
   /* Special content for EXPLAIN 'Extra' column or NULL if none */
   enum explain_extra_tag info;
@@ -527,8 +526,8 @@ typedef struct st_join_table {
   bool is_rowid_filter_built;
 
   /*
-    Set to true if we consider creating a nest for a prefix of the JOIN order
-    that satisfies the ordering
+    Set to true if we consider creating a nest for a prefix of the
+    join order that satisfies the ordering.
   */
   bool is_sort_nest;
 
@@ -847,6 +846,7 @@ public:
     is_used= FALSE;
   }
 
+  /* Please review this fix */
   void set_loosescan_key(uint key)
   {
     loosescan_key= key;
@@ -1005,7 +1005,9 @@ typedef struct st_position
   /* Cost info for the range filter used at this position */
   Range_rowid_filter_cost_info *range_rowid_filter_info;
 
-  /* Flag to be set to TRUE if the join prefix satisfies the ORDER BY CLAUSE */
+  /*
+    Flag to be set to TRUE if the join prefix satisfies the ORDER BY CLAUSE
+  */
   bool sort_nest_operation_here;
 
 } POSITION;
@@ -1629,9 +1631,12 @@ public:
   uint exec_join_tab_cnt() { return tables_list ? top_join_tab_count : 0; }
 
   /* TRUE if the sort-nest contains more than one table else FALSE */
-  bool sort_nest_needed() { return sort_nest_info ?
-                                   (sort_nest_info->n_tables == 1 ? FALSE : TRUE):
-                                   FALSE; }
+  bool sort_nest_needed()
+  {
+    return sort_nest_info ?
+           (sort_nest_info->n_tables == 1 ? FALSE :TRUE):
+           FALSE;
+  }
 
   /*
     Number of tables in the join which also includes the temporary tables
@@ -1785,7 +1790,7 @@ public:
     So the computations that require the entire join to happen don't need the
     sort nest, so we disable them here
 
-    Sort nest disabled for
+    Sort nest is not allowed for
     1) Only constant tables in the join
     2) DISTINCT clause
     3) GROUP BY CLAUSE
@@ -1795,16 +1800,19 @@ public:
     7) Using Rollup
     8) Using SQL_BUFFER_RESULT
     9) Only Select queries can use the sort nest
+
+    Returns TRUE if sort-nest is allowed
   */
 
-  bool need_order_nest()
+  bool sort_nest_allowed()
   {
-    return ((const_tables != table_count &&
+    return !((const_tables != table_count &&
             ((select_distinct || group_list) || having  ||
              MY_TEST(select_options & OPTION_BUFFER_RESULT))) ||
             (rollup.state != ROLLUP::STATE_NONE && select_distinct) ||
-            select_lex->window_specs.elements > 0 || select_lex->agg_func_used()
-            || thd->lex->sql_command != SQLCOM_SELECT);
+            select_lex->window_specs.elements > 0 ||
+            select_lex->agg_func_used() ||
+            thd->lex->sql_command != SQLCOM_SELECT);
   }
   bool choose_subquery_plan(table_map join_tables);
   void get_partial_cost_and_fanout(int end_tab_idx,
@@ -1907,7 +1915,6 @@ bool is_indexed_agg_distinct(JOIN *join, List<Item_field> *out_args);
 bool simple_pred(Item_func *func_item, Item **args, bool *inv_order);
 int opt_sum_query(THD* thd,
                   List<TABLE_LIST> &tables, List<Item> &all_fields, COND *conds);
-double calculate_record_count_for_sort_nest(JOIN *join, uint n_tables);
 
 /* from sql_delete.cc, used by opt_range.cc */
 extern "C" int refpos_order_cmp(void* arg, const void *a,const void *b);
@@ -2153,11 +2160,19 @@ bool mysql_select(THD *thd,
 void free_underlaid_joins(THD *thd, SELECT_LEX *select);
 bool mysql_explain_union(THD *thd, SELECT_LEX_UNIT *unit,
                          select_result *result);
+double calculate_record_count_for_sort_nest(JOIN *join, uint n_tables);
 void propagate_equal_field_for_orderby(JOIN *join, ORDER *first_order);
 bool check_join_prefix_contains_ordering(JOIN *join, JOIN_TAB *tab,
                                          table_map previous_tables);
 bool setup_sort_nest(JOIN *join);
 void find_keys_that_can_achieve_ordering(JOIN *join, JOIN_TAB *tab);
+double sort_nest_oper_cost(JOIN *join, double join_record_count,
+                           uint rec_len, uint idx);
+bool needs_filesort(JOIN_TAB *tab, uint idx, int index_used);
+void substitute_base_with_nest_items(JOIN *join);
+void extract_condition_for_the_nest(JOIN *join);
+void check_cond_extraction_for_nest(THD *thd, Item *cond,
+                                    Pushdown_checker checker, uchar* arg);
 
 
 /*
@@ -2510,8 +2525,6 @@ double get_tmp_table_write_cost(THD *thd, double row_count, uint row_size);
 void optimize_keyuse(JOIN *join, DYNAMIC_ARRAY *keyuse_array);
 bool sort_and_filter_keyuse(THD *thd, DYNAMIC_ARRAY *keyuse,
                             bool skip_unprefixed_keyparts);
-double postjoin_oper_cost(JOIN *join, double join_record_count, uint rec_len, uint idx);
-bool needs_filesort(JOIN_TAB *tab, uint idx, int index_used);
 
 struct st_cond_statistic
 {

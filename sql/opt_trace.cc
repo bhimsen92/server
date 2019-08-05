@@ -613,7 +613,7 @@ void Json_writer::add_table_name(const JOIN_TAB *tab)
     {
       size_t len= my_snprintf(table_name_buffer,
                            sizeof(table_name_buffer)-1,
-                           "<order-nest>");
+                           "<sort-nest>");
       add_str(table_name_buffer, len);
     }
     else
@@ -641,6 +641,11 @@ void add_table_scan_values_to_trace(THD *thd, JOIN_TAB *tab)
            .add("cost", tab->read_time);
 }
 
+
+/*
+  Add the tables that are inside the sort-nest
+  in the optimizer trace
+*/
 void add_sort_nest_tables_to_trace(JOIN *join)
 {
   JOIN_TAB *end_tab, *tab;
@@ -652,6 +657,44 @@ void add_sort_nest_tables_to_trace(JOIN *join)
   for (tab= join->join_tab + join->const_tables; tab < end_tab; tab++)
     sort_nest.add_table_name(tab);
 }
+
+/*
+  This function is used during best_access_path to print the sort-nest
+  that were considered doing the cost based analysis of the various
+  join orders.
+*/
+
+void trace_sort_nest(JOIN *join, uint idx, table_map remaining_tables)
+{
+  THD *const thd= join->thd;
+  Json_writer_array plan_prefix(thd, "sort-nest");
+  for (uint i= 0; i < idx; i++)
+  {
+    TABLE *tr= join->positions[i].table->table;
+    if (tr->map & remaining_tables)
+      plan_prefix.add_table_name(join->positions[i].table);
+  }
+}
+
+
+/*
+  This function is used during best_access_path to print the tables
+  inside the partial join that were considered doing the cost based
+  analysis of the various join orders.
+*/
+
+void trace_plan_prefix(JOIN *join, uint idx, table_map remaining_tables)
+{
+  THD *const thd= join->thd;
+  Json_writer_array plan_prefix(thd, "plan_prefix");
+  for (uint i= 0; i < idx; i++)
+  {
+    TABLE_LIST *const tr= join->positions[i].table->tab_list;
+    if (!(tr->map & remaining_tables))
+      plan_prefix.add_table_name(join->positions[i].table);
+  }
+}
+
 
 /*
   Introduce enum_query_type flags parameter, maybe also allow
