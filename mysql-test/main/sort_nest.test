@@ -260,3 +260,33 @@ eval $query;
 
 drop table t1,t2;
 
+create table t0 (a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, b int);
+insert into t1 select a,a from t0;
+create table t2 as select * from t1;
+
+create table t3 as select (A.a + 10*B.a+C.a*100) as a,
+                          (A.a + 10*B.a+C.a*100) as b
+                          from t0 A, t0 B,t0 C;
+
+let $query= select * from t2,t1 left join t3 on t3.a=t1.b
+            order by t2.a desc,t1.a desc limit 5;
+
+--echo #
+--echo # Outer Join
+--echo #
+
+--echo # sort-nest(t2,t1) and t3 outside the nest
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+--echo # no sort-nest as all the inner tables of the outer join will be inside the nest
+--echo # this should use temporary table to sort after the entire join is computed
+let $query= select * from t2 left join (t1 left join t3 on t3.a=t1.b) on t2.b=t1.a
+            order by t2.a desc,t1.a desc limit 5;
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+drop table t0,t1,t2,t3;

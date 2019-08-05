@@ -800,3 +800,449 @@ a	b	a	b
 0	0	3	3
 0	0	4	4
 drop table t1,t2,t3,t0;
+Derived table inside a sort-nest
+CREATE TABLE t1 (f1 varchar(1), f2 varchar(1), KEY (f2));
+INSERT INTO t1 VALUES
+('r','x'), ('x','x'), ('x','x'), ('r','x'), ('x','x');
+CREATE TABLE t2 (f1 varchar(1), f2 varchar(1));
+INSERT INTO t2 VALUES ('s','x');
+CREATE TABLE t3 (f1 varchar(1), f2 varchar(1), KEY (f2));
+INSERT INTO t3 VALUES
+(NULL,'x'), (NULL,'f'), ('t','x'), (NULL,'j'), ('g','x');
+CREATE TABLE t4 (f1 int, f2 varchar(1), KEY (f2,f1)) ;
+INSERT INTO t4 VALUES (2,'x'), (1,'x');
+explain SELECT t.f1 as f
+FROM (SELECT DISTINCT t1.* FROM t1,t2 WHERE t2.f2 = t1.f2) t,t3,t4
+WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	t4	index	f2	f2	9	NULL	2	Using where; Using index
+1	PRIMARY	<derived2>	ref	key1	key1	4	test.t4.f2	2	
+1	PRIMARY	<order-nest>	ALL	NULL	NULL	NULL	NULL	4	Using filesort
+1	PRIMARY	t3	ref	f2	f2	4	order-nest.f2	2	Using index
+2	DERIVED	t2	system	NULL	NULL	NULL	NULL	1	Using temporary
+2	DERIVED	t1	ALL	f2	NULL	NULL	NULL	5	Using where
+explain format=json SELECT t.f1 as f
+FROM (SELECT DISTINCT t1.* FROM t1,t2 WHERE t2.f2 = t1.f2) t,t3,t4
+WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "t4",
+      "access_type": "index",
+      "possible_keys": ["f2"],
+      "key": "f2",
+      "key_length": "9",
+      "used_key_parts": ["f2", "f1"],
+      "rows": 2,
+      "filtered": 100,
+      "attached_condition": "t4.f2 is not null",
+      "using_index": true
+    },
+    "table": {
+      "table_name": "<derived2>",
+      "access_type": "ref",
+      "possible_keys": ["key1"],
+      "key": "key1",
+      "key_length": "4",
+      "used_key_parts": ["f1"],
+      "ref": ["test.t4.f2"],
+      "rows": 2,
+      "filtered": 100,
+      "materialized": {
+        "query_block": {
+          "select_id": 2,
+          "temporary_table": {
+            "table": {
+              "table_name": "t2",
+              "access_type": "system",
+              "rows": 1,
+              "filtered": 100
+            },
+            "table": {
+              "table_name": "t1",
+              "access_type": "ALL",
+              "possible_keys": ["f2"],
+              "rows": 5,
+              "filtered": 100,
+              "attached_condition": "t1.f2 = 'x'"
+            }
+          }
+        }
+      }
+    },
+    "read_sorted_file": {
+      "filesort": {
+        "sort_key": "`order-nest`.f",
+        "table": {
+          "table_name": "<order-nest>",
+          "access_type": "ALL",
+          "rows": 4,
+          "filtered": 100
+        }
+      }
+    },
+    "table": {
+      "table_name": "t3",
+      "access_type": "ref",
+      "possible_keys": ["f2"],
+      "key": "f2",
+      "key_length": "4",
+      "used_key_parts": ["f2"],
+      "ref": ["order-nest.f2"],
+      "rows": 2,
+      "filtered": 100,
+      "using_index": true
+    }
+  }
+}
+SELECT t.f1 as f
+FROM (SELECT DISTINCT t1.* FROM t1,t2 WHERE t2.f2 = t1.f2) t,t3,t4
+WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f;
+f
+x
+x
+x
+x
+x
+x
+should use the sort-nest too like the query above
+explain SELECT t4.f1 as f, t.f1 as g
+FROM (SELECT DISTINCT t1.* FROM t1,t2 WHERE t2.f2 = t1.f2) t,t3,t4
+WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f,g;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	t4	index	f2	f2	9	NULL	2	Using where; Using index
+1	PRIMARY	<derived2>	ref	key1	key1	4	test.t4.f2	2	
+1	PRIMARY	<order-nest>	ALL	NULL	NULL	NULL	NULL	4	Using filesort
+1	PRIMARY	t3	ref	f2	f2	4	order-nest.f2	2	Using index
+2	DERIVED	t2	system	NULL	NULL	NULL	NULL	1	Using temporary
+2	DERIVED	t1	ALL	f2	NULL	NULL	NULL	5	Using where
+explain format=json SELECT t4.f1 as f, t.f1 as g
+FROM (SELECT DISTINCT t1.* FROM t1,t2 WHERE t2.f2 = t1.f2) t,t3,t4
+WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f,g;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "t4",
+      "access_type": "index",
+      "possible_keys": ["f2"],
+      "key": "f2",
+      "key_length": "9",
+      "used_key_parts": ["f2", "f1"],
+      "rows": 2,
+      "filtered": 100,
+      "attached_condition": "t4.f2 is not null",
+      "using_index": true
+    },
+    "table": {
+      "table_name": "<derived2>",
+      "access_type": "ref",
+      "possible_keys": ["key1"],
+      "key": "key1",
+      "key_length": "4",
+      "used_key_parts": ["f1"],
+      "ref": ["test.t4.f2"],
+      "rows": 2,
+      "filtered": 100,
+      "materialized": {
+        "query_block": {
+          "select_id": 2,
+          "temporary_table": {
+            "table": {
+              "table_name": "t2",
+              "access_type": "system",
+              "rows": 1,
+              "filtered": 100
+            },
+            "table": {
+              "table_name": "t1",
+              "access_type": "ALL",
+              "possible_keys": ["f2"],
+              "rows": 5,
+              "filtered": 100,
+              "attached_condition": "t1.f2 = 'x'"
+            }
+          }
+        }
+      }
+    },
+    "read_sorted_file": {
+      "filesort": {
+        "sort_key": "`order-nest`.f, `order-nest`.g",
+        "table": {
+          "table_name": "<order-nest>",
+          "access_type": "ALL",
+          "rows": 4,
+          "filtered": 100
+        }
+      }
+    },
+    "table": {
+      "table_name": "t3",
+      "access_type": "ref",
+      "possible_keys": ["f2"],
+      "key": "f2",
+      "key_length": "4",
+      "used_key_parts": ["f2"],
+      "ref": ["order-nest.f2"],
+      "rows": 2,
+      "filtered": 100,
+      "using_index": true
+    }
+  }
+}
+SELECT t4.f1 as f, t.f1 as g
+FROM (SELECT DISTINCT t1.* FROM t1,t2 WHERE t2.f2 = t1.f2) t,t3,t4
+WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f,g;
+f	g
+1	x
+1	x
+1	x
+2	x
+2	x
+2	x
+drop table t1,t2,t3,t4;
+views inside a sort-nest
+create table t0 (x int);
+create table t1 (a int);
+create table t2 (b int, c int default 0);
+insert t0 (x) values (0),(10);
+insert t1 (a) values (1), (2);
+insert t2 (b) values (1), (2);
+create view v1 as select t2.b,t2.c from t1, t2
+where t1.a=t2.b and t2.b < 3 with check option;
+explain select * from v1,t0 where b<3 and x=c order by x,b desc limit 2;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	2	Using where
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	2	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	<order-nest>	ALL	NULL	NULL	NULL	NULL	4	Using filesort
+1	SIMPLE	t0	ALL	NULL	NULL	NULL	NULL	2	Using where
+explain format=json select * from v1,t0 where b<3 and x=c order by x,b desc limit 2;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "t1",
+      "access_type": "ALL",
+      "rows": 2,
+      "filtered": 100,
+      "attached_condition": "t1.a < 3 and t1.a < 3"
+    },
+    "block-nl-join": {
+      "table": {
+        "table_name": "t2",
+        "access_type": "ALL",
+        "rows": 2,
+        "filtered": 100
+      },
+      "buffer_type": "flat",
+      "buffer_size": "65",
+      "join_type": "BNL",
+      "attached_condition": "t2.b = t1.a"
+    },
+    "read_sorted_file": {
+      "filesort": {
+        "sort_key": "`order-nest`.c, `order-nest`.a desc",
+        "table": {
+          "table_name": "<order-nest>",
+          "access_type": "ALL",
+          "rows": 4,
+          "filtered": 100
+        }
+      }
+    },
+    "table": {
+      "table_name": "t0",
+      "access_type": "ALL",
+      "rows": 2,
+      "filtered": 100,
+      "attached_condition": "t0.x = `order-nest`.c"
+    }
+  }
+}
+select * from v1,t0 where b<3 and x=c order by x,b desc limit 2;
+b	c	x
+2	0	0
+1	0	0
+drop table t0,t1,t2;
+drop view v1;
+# Primary key considered as the key that could achieve ordering
+create table t1 (id char(32) NOT NULL primary key);
+insert into t1 values (0), (1), (2), (3), (4), (5), (6), (7), (8), (9);
+create table t2 (id char(32) NOT NULL primary key);
+insert into t2 values (0), (1), (2), (3);
+explain select t1.id from t1 INNER JOIN t2 on t1.id=t2.id order by t2.id limit 2;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t2	index	PRIMARY	PRIMARY	32	NULL	2	Using index
+1	SIMPLE	t1	eq_ref	PRIMARY	PRIMARY	32	test.t2.id	1	Using index
+explain format=json select t1.id from t1 INNER JOIN t2 on t1.id=t2.id order by t2.id limit 2;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "t2",
+      "access_type": "index",
+      "possible_keys": ["PRIMARY"],
+      "key": "PRIMARY",
+      "key_length": "32",
+      "used_key_parts": ["id"],
+      "rows": 2,
+      "filtered": 100,
+      "using_index": true
+    },
+    "table": {
+      "table_name": "t1",
+      "access_type": "eq_ref",
+      "possible_keys": ["PRIMARY"],
+      "key": "PRIMARY",
+      "key_length": "32",
+      "used_key_parts": ["id"],
+      "ref": ["test.t2.id"],
+      "rows": 1,
+      "filtered": 100,
+      "using_index": true
+    }
+  }
+}
+select t1.id from t1 INNER JOIN t2 on t1.id=t2.id order by t2.id limit 2;
+id
+0
+1
+drop table t1,t2;
+create table t0 (a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, b int);
+insert into t1 select a,a from t0;
+create table t2 as select * from t1;
+create table t3 as select (A.a + 10*B.a+C.a*100) as a,
+(A.a + 10*B.a+C.a*100) as b
+from t0 A, t0 B,t0 C;
+#
+# Outer Join
+#
+# sort-nest(t2,t1) and t3 outside the nest
+explain select * from t2,t1 left join t3 on t3.a=t1.b
+order by t2.a desc,t1.a desc limit 5;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	10	
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	10	Using join buffer (flat, BNL join)
+1	SIMPLE	<order-nest>	ALL	NULL	NULL	NULL	NULL	100	Using filesort
+1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
+explain format=json select * from t2,t1 left join t3 on t3.a=t1.b
+order by t2.a desc,t1.a desc limit 5;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "const_condition": "1",
+    "table": {
+      "table_name": "t2",
+      "access_type": "ALL",
+      "rows": 10,
+      "filtered": 100
+    },
+    "block-nl-join": {
+      "table": {
+        "table_name": "t1",
+        "access_type": "ALL",
+        "rows": 10,
+        "filtered": 100
+      },
+      "buffer_type": "flat",
+      "buffer_size": "119",
+      "join_type": "BNL"
+    },
+    "read_sorted_file": {
+      "filesort": {
+        "sort_key": "`order-nest`.a desc, `order-nest`.a desc",
+        "table": {
+          "table_name": "<order-nest>",
+          "access_type": "ALL",
+          "rows": 100,
+          "filtered": 100
+        }
+      }
+    },
+    "table": {
+      "table_name": "t3",
+      "access_type": "ALL",
+      "rows": 1000,
+      "filtered": 100,
+      "attached_condition": "trigcond(t3.a = `order-nest`.b)"
+    }
+  }
+}
+select * from t2,t1 left join t3 on t3.a=t1.b
+order by t2.a desc,t1.a desc limit 5;
+a	b	a	b	a	b
+9	9	9	9	9	9
+9	9	8	8	8	8
+9	9	7	7	7	7
+9	9	6	6	6	6
+9	9	5	5	5	5
+# no sort-nest as all the inner tables of the outer join will be inside the nest
+# this should use temporary table to sort after the entire join is computed
+explain select * from t2 left join (t1 left join t3 on t3.a=t1.b) on t2.b=t1.a
+order by t2.a desc,t1.a desc limit 5;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	10	Using temporary; Using filesort
+1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	10	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where; Using join buffer (incremental, BNL join)
+explain format=json select * from t2 left join (t1 left join t3 on t3.a=t1.b) on t2.b=t1.a
+order by t2.a desc,t1.a desc limit 5;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "const_condition": "1",
+    "filesort": {
+      "sort_key": "t2.a desc, t1.a desc",
+      "temporary_table": {
+        "table": {
+          "table_name": "t2",
+          "access_type": "ALL",
+          "rows": 10,
+          "filtered": 100
+        },
+        "block-nl-join": {
+          "table": {
+            "table_name": "t1",
+            "access_type": "ALL",
+            "rows": 10,
+            "filtered": 100
+          },
+          "buffer_type": "flat",
+          "buffer_size": "141",
+          "join_type": "BNL",
+          "attached_condition": "trigcond(t1.a = t2.b)"
+        },
+        "block-nl-join": {
+          "table": {
+            "table_name": "t3",
+            "access_type": "ALL",
+            "rows": 1000,
+            "filtered": 100
+          },
+          "buffer_type": "incremental",
+          "buffer_size": "1Kb",
+          "join_type": "BNL",
+          "attached_condition": "trigcond(t3.a = t1.b)"
+        }
+      }
+    }
+  }
+}
+select * from t2 left join (t1 left join t3 on t3.a=t1.b) on t2.b=t1.a
+order by t2.a desc,t1.a desc limit 5;
+a	b	a	b	a	b
+9	9	9	9	9	9
+8	8	8	8	8	8
+7	7	7	7	7	7
+6	6	6	6	6	6
+5	5	5	5	5	5
+drop table t0,t1,t2,t3;
