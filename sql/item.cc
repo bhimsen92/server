@@ -6179,7 +6179,8 @@ Item *Item_field::replace_with_nest_items(THD *thd, uchar *arg)
   REPLACE_NEST_FIELD_ARG* param= (REPLACE_NEST_FIELD_ARG*)arg;
   JOIN *join= param->join;
   SORT_NEST_INFO *sort_nest_info= join->sort_nest_info;
-  if (!(used_tables() & sort_nest_info->nest_tables_map))
+  if (!(used_tables() & sort_nest_info->nest_tables_map) &&
+      !(used_tables() & OUTER_REF_TABLE_BIT))
     return this;
 
   List_iterator_fast<Item> li(sort_nest_info->nest_base_table_cols);
@@ -6189,7 +6190,16 @@ Item *Item_field::replace_with_nest_items(THD *thd, uchar *arg)
   {
     Item *field_item= item->real_item();
     if (field->eq(((Item_field*)field_item)->field))
+    {
+      if (used_tables() == OUTER_REF_TABLE_BIT)
+      {
+        Item_field *clone_item= new (thd->mem_root) Item_field(thd, this);
+        Item *nest_item= sort_nest_info->nest_temp_table_cols.elem(index);
+        clone_item->set_field(((Item_field*)nest_item)->field);
+        return clone_item;
+      }
       return sort_nest_info->nest_temp_table_cols.elem(index);
+    }
     index++;
   }
   return this;

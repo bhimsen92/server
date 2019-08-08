@@ -4815,6 +4815,7 @@ void substitute_base_with_nest_items(JOIN *join)
                                    (uchar *) &arg)) != item)
       {
         new_item->name= item->name;
+        thd->change_item_tree(it.ref(), new_item);
         it.replace(new_item);
       }
     new_item->update_used_tables();
