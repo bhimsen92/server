@@ -6511,6 +6511,16 @@ public:
       return TRUE;
     return (this->*processor)(arg);
   }
+  Item *transform(THD *thd, Item_transformer transformer, uchar *arg)
+  {
+    if (example)
+    {
+      Item *new_item= example->transform(thd, transformer, arg);
+      if (new_item != example)
+        setup(thd, new_item);
+    }
+    return (this->*transformer)(thd, arg);
+  }
   virtual Item *safe_charset_converter(THD *thd, CHARSET_INFO *tocs);
   void split_sum_func2_example(THD *thd,  Ref_ptr_array ref_pointer_array,
                                List<Item> &fields, uint flags)

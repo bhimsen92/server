@@ -396,7 +396,23 @@ eval explain $query;
 eval explain format=json $query;
 eval $query;
 
+--echo #
+--echo # sort-nest(t2,t1) and sort-nest fields substitution in the having clause of the subquery
+--echo # after IN -> EXISTS transformation
+--echo #
+
+let $query= select * from t2,t1,t3 ot1
+            where t2.a+ot1.a in (select max(t3.a) from t3 where t3.b=t1.b group by t3.c)
+            order by t2.a desc,t1.a desc limit 5;
+
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+--echo #
 --echo # sort-nest(t2,t1) and independent subquery in the select list
+--echo #
+
 let $query= select (select t4.a from t3 t4 where t4.a > 5 limit 1) as x, t2.b, t1.b, t3.a from t1,t2,t3
             where t1.a = t2.a order by t2.b desc, t1.b desc limit 5;
 
@@ -405,3 +421,4 @@ eval explain format=json $query;
 eval $query;
 
 drop table t0,t1,t2,t3;
+
