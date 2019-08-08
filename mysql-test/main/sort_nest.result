@@ -1515,3 +1515,328 @@ deallocate prepare ps1;
 deallocate prepare ps2;
 deallocate prepare ps3;
 drop table t0,t1,t2,t3;
+# DEPENDENT SUBQUERIES
+create table t0 (a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, b int);
+insert into t1 select a,a from t0 where a <5;
+create table t2 as select * from t1 where a < 5;
+create table t3 as select (A.a + 10*B.a+C.a*100) as a, (A.a + 10*B.a+C.a*100) as b,
+(A.a + 10*B.a+C.a*100) as c from t0 A, t0 B,t0 C;
+set optimizer_switch='exists_to_in=off';
+# sort-nest(t2,t1) and subquery should be attached to table ot1
+explain select * from t2,t1,t3
+where exists (select max(t3.a) from t3 t4 where t4.b=t1.b group by t4.c having t3.a= max(t4.a))
+order by t2.a desc,t1.a desc limit 5;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	5	
+1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	5	Using join buffer (flat, BNL join)
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	25	Using filesort
+1	PRIMARY	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
+2	DEPENDENT SUBQUERY	t4	ALL	NULL	NULL	NULL	NULL	1000	Using where; Using temporary
+explain format=json select * from t2,t1,t3
+where exists (select max(t3.a) from t3 t4 where t4.b=t1.b group by t4.c having t3.a= max(t4.a))
+order by t2.a desc,t1.a desc limit 5;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "t2",
+      "access_type": "ALL",
+      "rows": 5,
+      "filtered": 100
+    },
+    "block-nl-join": {
+      "table": {
+        "table_name": "t1",
+        "access_type": "ALL",
+        "rows": 5,
+        "filtered": 100
+      },
+      "buffer_type": "flat",
+      "buffer_size": "119",
+      "join_type": "BNL"
+    },
+    "read_sorted_file": {
+      "filesort": {
+        "sort_key": "`sort-nest`.a desc, `sort-nest`.a desc",
+        "table": {
+          "table_name": "<sort-nest>",
+          "access_type": "ALL",
+          "rows": 25,
+          "filtered": 100
+        }
+      }
+    },
+    "table": {
+      "table_name": "t3",
+      "access_type": "ALL",
+      "rows": 1000,
+      "filtered": 100,
+      "attached_condition": "exists(subquery#2)"
+    },
+    "subqueries": [
+      {
+        "expression_cache": {
+          "state": "uninitialized",
+          "query_block": {
+            "select_id": 2,
+            "having_condition": "t3.a = max(t4.a)",
+            "temporary_table": {
+              "table": {
+                "table_name": "t4",
+                "access_type": "ALL",
+                "rows": 1000,
+                "filtered": 100,
+                "attached_condition": "t4.b = `sort-nest`.b"
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+select * from t2,t1,t3
+where exists (select max(t3.a) from t3 t4 where t4.b=t1.b group by t4.c having t3.a= max(t4.a))
+order by t2.a desc,t1.a desc limit 5;
+a	b	a	b	a	b	c
+4	4	4	4	4	4	4
+4	4	3	3	3	3	3
+4	4	2	2	2	2	2
+4	4	1	1	1	1	1
+4	4	0	0	0	0	0
+set optimizer_switch=default;
+# sort-nest(t2,t1) and subquery should be attached to table ot1 (same as above)
+explain select * from t2,t1,t3
+where t3.a in (select max(t4.a) from t3 t4 where t4.b=t1.b group by t4.c)
+order by t2.a desc,t1.a desc limit 5;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	5	
+1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	5	Using join buffer (flat, BNL join)
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	25	Using filesort
+1	PRIMARY	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
+2	DEPENDENT SUBQUERY	t4	ALL	NULL	NULL	NULL	NULL	1000	Using where; Using temporary
+explain format=json select * from t2,t1,t3
+where t3.a in (select max(t4.a) from t3 t4 where t4.b=t1.b group by t4.c)
+order by t2.a desc,t1.a desc limit 5;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "t2",
+      "access_type": "ALL",
+      "rows": 5,
+      "filtered": 100
+    },
+    "block-nl-join": {
+      "table": {
+        "table_name": "t1",
+        "access_type": "ALL",
+        "rows": 5,
+        "filtered": 100
+      },
+      "buffer_type": "flat",
+      "buffer_size": "119",
+      "join_type": "BNL"
+    },
+    "read_sorted_file": {
+      "filesort": {
+        "sort_key": "`sort-nest`.a desc, `sort-nest`.a desc",
+        "table": {
+          "table_name": "<sort-nest>",
+          "access_type": "ALL",
+          "rows": 25,
+          "filtered": 100
+        }
+      }
+    },
+    "table": {
+      "table_name": "t3",
+      "access_type": "ALL",
+      "rows": 1000,
+      "filtered": 100,
+      "attached_condition": "<in_optimizer>(t3.a,<exists>(subquery#2))"
+    },
+    "subqueries": [
+      {
+        "query_block": {
+          "select_id": 2,
+          "having_condition": "<cache>(t3.a) = <ref_null_helper>(max(t4.a))",
+          "temporary_table": {
+            "table": {
+              "table_name": "t4",
+              "access_type": "ALL",
+              "rows": 1000,
+              "filtered": 100,
+              "attached_condition": "t4.b = `sort-nest`.b"
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+select * from t2,t1,t3
+where t3.a in (select max(t4.a) from t3 t4 where t4.b=t1.b group by t4.c)
+order by t2.a desc,t1.a desc limit 5;
+a	b	a	b	a	b	c
+4	4	4	4	4	4	4
+4	4	3	3	3	3	3
+4	4	2	2	2	2	2
+4	4	1	1	1	1	1
+4	4	0	0	0	0	0
+# sort-nest(t2,t1) and dependent subquery in the select list
+explain select (select t4.a from t3 t4 where t4.a > t1.b limit 1) as x, t2.b, t1.b, t3.a from t1,t2,t3
+where t1.a = t2.a order by t2.b desc, t1.b desc limit 5;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	5	
+1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	5	Using where; Using join buffer (flat, BNL join)
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	25	Using filesort
+1	PRIMARY	t3	ALL	NULL	NULL	NULL	NULL	1000	
+2	DEPENDENT SUBQUERY	t4	ALL	NULL	NULL	NULL	NULL	1000	Using where
+explain format=json select (select t4.a from t3 t4 where t4.a > t1.b limit 1) as x, t2.b, t1.b, t3.a from t1,t2,t3
+where t1.a = t2.a order by t2.b desc, t1.b desc limit 5;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "t1",
+      "access_type": "ALL",
+      "rows": 5,
+      "filtered": 100
+    },
+    "block-nl-join": {
+      "table": {
+        "table_name": "t2",
+        "access_type": "ALL",
+        "rows": 5,
+        "filtered": 100
+      },
+      "buffer_type": "flat",
+      "buffer_size": "119",
+      "join_type": "BNL",
+      "attached_condition": "t2.a = t1.a"
+    },
+    "read_sorted_file": {
+      "filesort": {
+        "sort_key": "`sort-nest`.b desc, `sort-nest`.b desc",
+        "table": {
+          "table_name": "<sort-nest>",
+          "access_type": "ALL",
+          "rows": 25,
+          "filtered": 100
+        }
+      }
+    },
+    "table": {
+      "table_name": "t3",
+      "access_type": "ALL",
+      "rows": 1000,
+      "filtered": 100
+    },
+    "subqueries": [
+      {
+        "expression_cache": {
+          "state": "uninitialized",
+          "query_block": {
+            "select_id": 2,
+            "table": {
+              "table_name": "t4",
+              "access_type": "ALL",
+              "rows": 1000,
+              "filtered": 100,
+              "attached_condition": "t4.a > `sort-nest`.b"
+            }
+          }
+        }
+      }
+    ]
+  }
+}
+select (select t4.a from t3 t4 where t4.a > t1.b limit 1) as x, t2.b, t1.b, t3.a from t1,t2,t3
+where t1.a = t2.a order by t2.b desc, t1.b desc limit 5;
+x	b	b	a
+5	4	4	0
+5	4	4	1
+5	4	4	2
+5	4	4	3
+5	4	4	4
+# sort-nest(t2,t1) and independent subquery in the select list
+explain select (select t4.a from t3 t4 where t4.a > 5 limit 1) as x, t2.b, t1.b, t3.a from t1,t2,t3
+where t1.a = t2.a order by t2.b desc, t1.b desc limit 5;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	5	
+1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	5	Using where; Using join buffer (flat, BNL join)
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	25	Using filesort
+1	PRIMARY	t3	ALL	NULL	NULL	NULL	NULL	1000	
+2	SUBQUERY	t4	ALL	NULL	NULL	NULL	NULL	1000	Using where
+explain format=json select (select t4.a from t3 t4 where t4.a > 5 limit 1) as x, t2.b, t1.b, t3.a from t1,t2,t3
+where t1.a = t2.a order by t2.b desc, t1.b desc limit 5;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "t1",
+      "access_type": "ALL",
+      "rows": 5,
+      "filtered": 100
+    },
+    "block-nl-join": {
+      "table": {
+        "table_name": "t2",
+        "access_type": "ALL",
+        "rows": 5,
+        "filtered": 100
+      },
+      "buffer_type": "flat",
+      "buffer_size": "119",
+      "join_type": "BNL",
+      "attached_condition": "t2.a = t1.a"
+    },
+    "read_sorted_file": {
+      "filesort": {
+        "sort_key": "`sort-nest`.b desc, `sort-nest`.b desc",
+        "table": {
+          "table_name": "<sort-nest>",
+          "access_type": "ALL",
+          "rows": 25,
+          "filtered": 100
+        }
+      }
+    },
+    "table": {
+      "table_name": "t3",
+      "access_type": "ALL",
+      "rows": 1000,
+      "filtered": 100
+    },
+    "subqueries": [
+      {
+        "query_block": {
+          "select_id": 2,
+          "table": {
+            "table_name": "t4",
+            "access_type": "ALL",
+            "rows": 1000,
+            "filtered": 100,
+            "attached_condition": "t4.a > 5"
+          }
+        }
+      }
+    ]
+  }
+}
+select (select t4.a from t3 t4 where t4.a > 5 limit 1) as x, t2.b, t1.b, t3.a from t1,t2,t3
+where t1.a = t2.a order by t2.b desc, t1.b desc limit 5;
+x	b	b	a
+6	4	4	0
+6	4	4	1
+6	4	4	2
+6	4	4	3
+6	4	4	4
+drop table t0,t1,t2,t3;

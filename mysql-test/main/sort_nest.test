@@ -356,3 +356,52 @@ deallocate prepare ps1;
 deallocate prepare ps2;
 deallocate prepare ps3;
 drop table t0,t1,t2,t3;
+
+--echo # DEPENDENT SUBQUERIES
+
+create table t0 (a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, b int);
+insert into t1 select a,a from t0 where a <5;
+create table t2 as select * from t1 where a < 5;
+create table t3 as select (A.a + 10*B.a+C.a*100) as a, (A.a + 10*B.a+C.a*100) as b,
+                          (A.a + 10*B.a+C.a*100) as c from t0 A, t0 B,t0 C; # 1000 rows
+
+set optimizer_switch='exists_to_in=off';
+
+--echo # sort-nest(t2,t1) and subquery should be attached to table ot1
+let $query= select * from t2,t1,t3
+            where exists (select max(t3.a) from t3 t4 where t4.b=t1.b group by t4.c having t3.a= max(t4.a))
+            order by t2.a desc,t1.a desc limit 5;
+
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+set optimizer_switch=default;
+--echo # sort-nest(t2,t1) and subquery should be attached to table ot1 (same as above)
+let $query= select * from t2,t1,t3
+            where t3.a in (select max(t4.a) from t3 t4 where t4.b=t1.b group by t4.c)
+            order by t2.a desc,t1.a desc limit 5;
+
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+--echo # sort-nest(t2,t1) and dependent subquery in the select list
+let $query= select (select t4.a from t3 t4 where t4.a > t1.b limit 1) as x, t2.b, t1.b, t3.a from t1,t2,t3
+            where t1.a = t2.a order by t2.b desc, t1.b desc limit 5;
+
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+--echo # sort-nest(t2,t1) and independent subquery in the select list
+let $query= select (select t4.a from t3 t4 where t4.a > 5 limit 1) as x, t2.b, t1.b, t3.a from t1,t2,t3
+            where t1.a = t2.a order by t2.b desc, t1.b desc limit 5;
+
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+drop table t0,t1,t2,t3;
