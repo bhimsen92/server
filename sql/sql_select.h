@@ -2167,7 +2167,7 @@ bool check_join_prefix_contains_ordering(JOIN *join, JOIN_TAB *tab,
 bool setup_sort_nest(JOIN *join);
 void find_keys_that_can_achieve_ordering(JOIN *join, JOIN_TAB *tab);
 double sort_nest_oper_cost(JOIN *join, double join_record_count,
-                           uint rec_len, uint idx);
+                           ulong rec_len, uint idx);
 bool needs_filesort(JOIN_TAB *tab, uint idx, int index_used);
 void substitute_base_with_nest_items(JOIN *join);
 void extract_condition_for_the_nest(JOIN *join);
@@ -2520,8 +2520,8 @@ bool open_tmp_table(TABLE *table);
 void setup_tmp_table_column_bitmaps(TABLE *table, uchar *bitmaps);
 double prev_record_reads(POSITION *positions, uint idx, table_map found_ref);
 void fix_list_after_tbl_changes(SELECT_LEX *new_parent, List<TABLE_LIST> *tlist);
-double get_tmp_table_lookup_cost(THD *thd, double row_count, uint row_size);
-double get_tmp_table_write_cost(THD *thd, double row_count, uint row_size);
+double get_tmp_table_lookup_cost(THD *thd, double row_count, ulong row_size);
+double get_tmp_table_write_cost(THD *thd, double row_count, ulong row_size);
 void optimize_keyuse(JOIN *join, DYNAMIC_ARRAY *keyuse_array);
 bool sort_and_filter_keyuse(THD *thd, DYNAMIC_ARRAY *keyuse,
                             bool skip_unprefixed_keyparts);

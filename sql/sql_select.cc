@@ -9995,8 +9995,9 @@ best_extension_by_limited_search(JOIN      *join,
           double cost= 0;
           if (needs_filesort(s, idx, index_used))
           {
+            ulong rec_len= cache_record_length_for_nest(join, idx);
             cost= sort_nest_oper_cost(join, partial_join_cardinality,
-                                     AVG_REC_LEN, idx);
+                                      rec_len, idx);
             current_read_time= COST_ADD(current_read_time, cost);
             trace_one_table.add("cost_of_sorting", cost);
           }
@@ -10023,7 +10024,6 @@ best_extension_by_limited_search(JOIN      *join,
           'join' is either the best partial QEP with 'search_depth' relations,
           or the best complete QEP so far, whichever is smaller.
         */
-        (void)cache_record_length_for_nest(join, idx);
         if (!nest_created &&
             ((join->sort_by_table &&
               join->sort_by_table !=
@@ -10035,7 +10035,9 @@ best_extension_by_limited_search(JOIN      *join,
              heuristic since we cannot know for sure at this point.
              Hence it may be wrong.
           */
-          double cost= sort_nest_oper_cost(join, partial_join_cardinality, AVG_REC_LEN, idx);
+          ulong rec_len= cache_record_length_for_nest(join, idx);
+          double cost= sort_nest_oper_cost(join, partial_join_cardinality,
+                                           rec_len, idx);
           trace_one_table.add("cost_of_sorting", cost);
           current_read_time= COST_ADD(current_read_time, cost);
         }
@@ -29374,7 +29376,8 @@ select_handler *SELECT_LEX::find_select_handler(THD *thd)
 */
 
 
-double sort_nest_oper_cost(JOIN *join, double join_record_count, uint rec_len, uint idx)
+double sort_nest_oper_cost(JOIN *join, double join_record_count,
+                           ulong rec_len, uint idx)
 {
   THD *thd= join->thd;
   double cost= 0;

@@ -448,7 +448,7 @@ static bool convert_subq_to_sj(JOIN *parent_join, Item_in_subselect *subq_pred);
 static bool convert_subq_to_jtbm(JOIN *parent_join, 
                                  Item_in_subselect *subq_pred, bool *remove);
 static TABLE_LIST *alloc_join_nest(THD *thd);
-static uint get_tmp_table_rec_length(Ref_ptr_array p_list, uint elements);
+static ulong get_tmp_table_rec_length(Ref_ptr_array p_list, uint elements);
 bool find_eq_ref_candidate(TABLE *table, table_map sj_inner_tables);
 static SJ_MATERIALIZATION_INFO *
 at_sjmat_pos(const JOIN *join, table_map remaining_tables, const JOIN_TAB *tab,
@@ -2506,8 +2506,8 @@ bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
         /*
           Calculate temporary table parameters and usage costs
         */
-        uint rowlen= get_tmp_table_rec_length(subq_select->ref_pointer_array,
-                                              subq_select->item_list.elements);
+        ulong rowlen= get_tmp_table_rec_length(subq_select->ref_pointer_array,
+                                               subq_select->item_list.elements);
         double lookup_cost= get_tmp_table_lookup_cost(join->thd,
                                                       subjoin_out_rows, rowlen);
         double write_cost= get_tmp_table_write_cost(join->thd,
@@ -2554,9 +2554,9 @@ bool optimize_semijoin_nests(JOIN *join, table_map all_table_map)
     Length of the temptable record, in bytes
 */
 
-static uint get_tmp_table_rec_length(Ref_ptr_array p_items, uint elements)
+static ulong get_tmp_table_rec_length(Ref_ptr_array p_items, uint elements)
 {
-  uint len= 0;
+  ulong len= 0;
   Item *item;
   //List_iterator<Item> it(items);
   for (uint i= 0; i < elements ; i++)
@@ -2607,7 +2607,7 @@ static uint get_tmp_table_rec_length(Ref_ptr_array p_items, uint elements)
 */
 
 double
-get_tmp_table_lookup_cost(THD *thd, double row_count, uint row_size)
+get_tmp_table_lookup_cost(THD *thd, double row_count, ulong row_size)
 {
   if (row_count > thd->variables.max_heap_table_size / (double) row_size)
     return (double) DISK_TEMPTABLE_LOOKUP_COST;
@@ -2627,7 +2627,7 @@ get_tmp_table_lookup_cost(THD *thd, double row_count, uint row_size)
 */
 
 double
-get_tmp_table_write_cost(THD *thd, double row_count, uint row_size)
+get_tmp_table_write_cost(THD *thd, double row_count, ulong row_size)
 {
   double lookup_cost= get_tmp_table_lookup_cost(thd, row_count, row_size);
   /*
@@ -3370,7 +3370,7 @@ bool Duplicate_weedout_picker::check_qep(JOIN *join,
     double prefix_rec_count;
     double sj_inner_fanout= 1.0;
     double sj_outer_fanout= 1.0;
-    uint temptable_rec_size;
+    ulong temptable_rec_size;
     if (first_tab == join->const_tables)
     {
       prefix_rec_count= 1.0;
@@ -6423,7 +6423,7 @@ bool JOIN::choose_subquery_plan(table_map join_tables)
     */
     /* C.1 Compute the cost of the materialization strategy. */
     //uint rowlen= get_tmp_table_rec_length(unit->first_select()->item_list);
-    uint rowlen= get_tmp_table_rec_length(ref_ptrs, 
+    ulong rowlen= get_tmp_table_rec_length(ref_ptrs,
                                           select_lex->item_list.elements);
     /* The cost of writing one row into the temporary table. */
     double write_cost= get_tmp_table_write_cost(thd, inner_record_count_1,
