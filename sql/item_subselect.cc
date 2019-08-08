@@ -714,6 +714,53 @@ bool Item_subselect::walk(Item_processor processor, bool walk_subquery,
 }
 
 
+Item* Item_subselect::transform(THD *thd, Item_transformer transformer,
+                               uchar *arg)
+{
+  if (!(unit->uncacheable & ~UNCACHEABLE_DEPENDENT) && engine->is_executed() &&
+      !unit->describe)
+  {
+    /*
+      The subquery has already been executed (for real, it wasn't EXPLAIN's
+      fake execution) so it should not matter what it has inside.
+
+      The actual reason for not walking inside is that parts of the subquery
+      (e.g. JTBM join nests and their IN-equality conditions may have been
+       invalidated by irreversible cleanups (those happen after an uncorrelated
+       subquery has been executed).
+    */
+    return (this->*transformer)(thd, arg);
+  }
+
+  for (SELECT_LEX *lex= unit->first_select(); lex; lex= lex->next_select())
+  {
+    List_iterator<Item> li(lex->item_list);
+    Item *item;
+    ORDER *order;
+
+    if (lex->where)
+    {
+      item= (lex->where)->transform(thd, transformer, arg);
+      if (item && item != lex->where)
+        thd->change_item_tree(&lex->where, item);
+    }
+    if (lex->having)
+      lex->having= (lex->having)->transform(thd, transformer, arg);
+
+    while ((item=li++))
+      item= item->transform(thd, transformer, arg);
+
+    for (order= lex->order_list.first ; order; order= order->next)
+      *order->item= (*order->item)->transform(thd, transformer, arg);
+
+    for (order= lex->group_list.first ; order; order= order->next)
+      *order->item= (*order->item)->transform(thd, transformer, arg);
+  }
+
+  return (this->*transformer)(thd, arg);
+}
+
+
 bool Item_subselect::exec()
 {
   subselect_engine *org_engine= engine;
