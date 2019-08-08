@@ -29375,7 +29375,6 @@ select_handler *SELECT_LEX::find_select_handler(THD *thd)
 
 */
 
-
 double sort_nest_oper_cost(JOIN *join, double join_record_count,
                            ulong rec_len, uint idx)
 {
@@ -29418,6 +29417,7 @@ double calculate_record_count_for_sort_nest(JOIN *join, uint n_tables)
   Find all keys for the table inside join_tab that would satisfy
   the ORDER BY clause
 */
+
 void find_keys_that_can_achieve_ordering(JOIN *join, JOIN_TAB *tab)
 {
   if (!join->order)
@@ -29443,6 +29443,7 @@ void find_keys_that_can_achieve_ordering(JOIN *join, JOIN_TAB *tab)
     TRUE  : Filesort is needed
     FALSE : index access satifies the ordering
 */
+
 bool needs_filesort(JOIN_TAB *tab, uint idx, int index_used)
 {
   JOIN *join= tab->join;
