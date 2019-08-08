@@ -321,3 +321,38 @@ eval $query;
 set optimizer_switch=default;
 drop table t0,t1,t2,t3;
 
+--echo #
+--echo # Sort-nest with prepared statements
+--echo #
+
+create table t0 (a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, b int);
+insert into t1 select a,a from t0;
+create table t2 as select * from t1;
+
+create table t3 (a int, b int);
+insert into t3 select (A.a + 10*B.a+C.a*100) as a,
+                       (A.a + 10*B.a+C.a*100) as b
+                        from t0 A, t0 B,t0 C;
+
+--echo # sort-nest on table t1,t2
+prepare ps1 from "explain select * from t2,t1,t3 where t3.a=t1.b+1 order by t2.a desc,t1.a desc limit 5";
+execute ps1;
+execute ps1;
+
+--echo # sort-nest on table t1,t2
+prepare ps2 from "explain format=json  
+                    select * from t2,t1,t3 where t3.a=t1.b+1 order by t2.a desc,t1.a desc limit 5";
+execute ps2;
+execute ps2;
+
+--echo # sort-nest on table t1,t2
+prepare ps3 from "select * from t2,t1,t3 where t3.a=t1.b+1 order by t2.a desc,t1.a desc limit 5";
+execute ps3;
+execute ps3;
+
+deallocate prepare ps1;
+deallocate prepare ps2;
+deallocate prepare ps3;
+drop table t0,t1,t2,t3;
