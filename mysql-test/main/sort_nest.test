@@ -159,6 +159,26 @@ eval explain $query;
 eval explain format=json $query;
 eval $query;
 
+
+--echo #
+--echo # Selectivity estimates taken into account for sort-nest{t1,t2}
+--echo #
+
+create index idx1 on t1(b);
+create index idx2 on t2(a);
+create index idx3 on t3(b);
+
+let $query= select * from t1,t2,t3
+            where t1.a=t2.a and t1.b = t3.a and t1.b < 5 and t3.b < 500
+            order by t2.b limit 50;
+
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+drop index idx1 on t1;
+drop index idx2 on t2;
+drop index idx3 on t3;
 drop table t1,t2,t3,ten,one_k;
 drop function f1;
 
