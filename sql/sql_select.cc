@@ -108,10 +108,10 @@ static ha_rows get_quick_record_count(THD *thd, SQL_SELECT *select,
 				      TABLE *table,
 				      const key_map *keys,ha_rows limit);
 void best_access_path(JOIN *join, JOIN_TAB *s, 
-                             table_map remaining_tables, uint idx, 
-                             bool disable_jbuf, double record_count,
-                             POSITION *pos, POSITION *loose_scan_pos,
-                             int *index_used);
+                      table_map remaining_tables, uint idx,
+                      bool disable_jbuf, double record_count,
+                      POSITION *pos, POSITION *loose_scan_pos,
+                      int *index_used);
 static void optimize_straight_join(JOIN *join, table_map join_tables);
 static bool greedy_search(JOIN *join, table_map remaining_tables,
                           uint depth, uint prune_level,
@@ -2712,8 +2712,9 @@ int JOIN::optimize_stage2()
     Yet the current implementation of FORCE INDEX hints does not
     allow us to do it in a clean manner.
   */
-  no_jbuf_after= 1 ? (sort_nest_info ? const_tables + sort_nest_info->n_tables
-                                      : table_count)
+  no_jbuf_after= 1 ? (sort_nest_info ?
+                      const_tables + sort_nest_info->n_tables :
+                      table_count)
                    : make_join_orderinfo(this);
 
   // Don't use join buffering when we use MATCH
@@ -4841,9 +4842,10 @@ void substitute_base_with_nest_items(JOIN *join)
     {
       for (uint keypart= 0; keypart < tab->ref.key_parts; keypart++)
       {
-        item= tab->ref.items[keypart]->transform(join->thd,
-                                                 &Item::replace_with_nest_items,
-                                                 (uchar *) &arg);
+        Item *ref_item= tab->ref.items[keypart];
+        item= ref_item->transform(thd, &Item::replace_with_nest_items,
+                                  (uchar *) &arg);
+
         if (item != tab->ref.items[keypart])
         {
           tab->ref.items[keypart]= item;
@@ -4861,11 +4863,11 @@ void substitute_base_with_nest_items(JOIN *join)
 
     if (*tab->on_expr_ref)
     {
-      item= (*tab->on_expr_ref)->transform(join->thd,
+      item= (*tab->on_expr_ref)->transform(thd,
                                            &Item::replace_with_nest_items,
                                            (uchar *) &arg);
+      item->update_used_tables();
       *tab->on_expr_ref= item;
-      (*tab->on_expr_ref)->update_used_tables();
     }
   }
 
@@ -9852,6 +9854,7 @@ best_extension_by_limited_search(JOIN      *join,
   {
     fraction_output= join->select_limit < (*cardinality) ?
                      (join->select_limit/(*cardinality)) : 1.0;
+    record_count= COST_MULT(record_count, fraction_output);
   }
   else
     fraction_output= 1.0;
@@ -9904,7 +9907,6 @@ best_extension_by_limited_search(JOIN      *join,
                                              filter_cmp_gain,
                                              current_record_count /
                                              (double) TIME_FOR_COMPARE), fraction_output));
-      current_record_count= COST_MULT(current_record_count, fraction_output);
 
       advance_sj_state(join, remaining_tables, idx, &current_record_count,
                        &current_read_time, &loose_scan_pos);
@@ -13290,7 +13292,9 @@ restart:
     */
     prev_tab= tab - 1;
     if (tab == join->join_tab + join->const_tables ||
-        (tab->bush_root_tab && tab->bush_root_tab->bush_children->start == tab) || tab->is_sort_nest)
+        (tab->bush_root_tab &&
+         tab->bush_root_tab->bush_children->start == tab) ||
+        tab->is_sort_nest)
       prev_tab= NULL;
 
     switch (tab->type) {
@@ -29434,6 +29438,7 @@ void find_keys_that_can_achieve_ordering(JOIN *join, JOIN_TAB *tab)
   table->keys_in_use_for_order_by.intersect(keys_with_ordering);
 }
 
+
 /*
   @brief
   Checks if the partial plan needs filesort for ordering or an index
@@ -29443,6 +29448,7 @@ void find_keys_that_can_achieve_ordering(JOIN *join, JOIN_TAB *tab)
     TRUE  : Filesort is needed
     FALSE : index access satifies the ordering
 */
+
 
 bool needs_filesort(JOIN_TAB *tab, uint idx, int index_used)
 {
@@ -29455,6 +29461,7 @@ bool needs_filesort(JOIN_TAB *tab, uint idx, int index_used)
    return !table->keys_in_use_for_order_by.is_set(index_used);
   return TRUE;
 }
+
 
 /**
   @} (end of group Query_Optimizer)

@@ -1787,8 +1787,9 @@ public:
 
   /*
     Sort nest is needed currently when we can shortcut the entire join.
-    So the computations that require the entire join to happen don't need the
-    sort nest, so we disable them here
+    So for the operation that require the entire join computation to be done
+    first and then applies the operation on the full join output don't need
+    the sort nest, so we disable the usage of sort nest for such operations.
 
     Sort nest is not allowed for
     1) Only constant tables in the join
@@ -2173,7 +2174,6 @@ void substitute_base_with_nest_items(JOIN *join);
 void extract_condition_for_the_nest(JOIN *join);
 void check_cond_extraction_for_nest(THD *thd, Item *cond,
                                     Pushdown_checker checker, uchar* arg);
-
 
 /*
   General routine to change field->ptr of a NULL-terminated array of Field
