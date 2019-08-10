@@ -2600,7 +2600,8 @@ Item* Item_func_or_sum::build_clone(THD *thd, const Build_clone_prm &prm)
   return copy;
 }
 
-int Item_func_or_sum::substitute_expr_with_vcol(Item::Subst_expr_prm *prm) {
+int Item_func_or_sum::substitute_expr_with_vcol(Subst_expr_prm *prm)
+{
   // check if can replace whole current item
   if (int repl = Item::substitute_expr_with_vcol(prm))
   {
@@ -7379,7 +7380,7 @@ Item *Item::build_pushable_cond(THD *thd,
     return new_cond;
   }
   else if (get_extraction_flag() != NO_EXTRACTION_FL)
-    return build_clone(thd, Build_clone_prm());
+    return build_clone(thd, {});
   return 0;
 }
 
@@ -7493,7 +7494,7 @@ Item *Item_field::derived_field_transformer_for_where(THD *thd, uchar *arg)
   Item *producing_item= find_producing_item(this, sel);
   if (producing_item)
   {
-    Item *producing_clone= producing_item->build_clone(thd, Build_clone_prm());
+    Item *producing_clone= producing_item->build_clone(thd, {});
     if (producing_clone)
       producing_clone->marker|= SUBSTITUTION_FL;
     return producing_clone;
@@ -7511,7 +7512,7 @@ Item *Item_direct_view_ref::derived_field_transformer_for_where(THD *thd,
     st_select_lex *sel= (st_select_lex *)arg;
     Item *producing_item= find_producing_item(this, sel);
     DBUG_ASSERT (producing_item != NULL);
-    return producing_item->build_clone(thd, Build_clone_prm());
+    return producing_item->build_clone(thd, {});
   }
   return (*ref);
 }
@@ -7524,7 +7525,7 @@ Item *Item_field::grouping_field_transformer_for_where(THD *thd, uchar *arg)
   if (gr_field)
   {
     Item *producing_clone=
-      gr_field->corresponding_item->build_clone(thd, Build_clone_prm());
+      gr_field->corresponding_item->build_clone(thd, {});
     if (producing_clone)
       producing_clone->marker|= SUBSTITUTION_FL;
     return producing_clone;
@@ -7547,7 +7548,7 @@ Item_direct_view_ref::grouping_field_transformer_for_where(THD *thd,
   st_select_lex *sel= (st_select_lex *)arg;
   Field_pair *gr_field= find_matching_field_pair(this,
                                                  sel->grouping_tmp_fields);
-  return gr_field->corresponding_item->build_clone(thd, Build_clone_prm());
+  return gr_field->corresponding_item->build_clone(thd, {});
 }
 
 void Item_field::print(String *str, enum_query_type query_type)
@@ -10503,8 +10504,10 @@ void Item::register_in(THD *thd)
   thd->free_list= this;
 }
 
-int Item::substitute_expr_with_vcol(Item::Subst_expr_prm *prm) {
-  Item* replacement = find_vfield_replacement(prm->thd, *prm->item_ptr, prm->vfield);
+int Item::substitute_expr_with_vcol(Subst_expr_prm *prm)
+{
+  Item* replacement = find_vfield_replacement(prm->thd, *prm->item_ptr,
+                                              prm->vfield);
   if (replacement)
   {
     *prm->item_ptr = replacement;
@@ -10517,5 +10520,9 @@ Item* Item::find_vfield_replacement(THD *thd, Item *item, Field* vfield)
 {
   Item *vcol_expr = vfield->vcol_info->expr;
   // fixing fields later in rewrite_expr_with_vfieds
-  return item->eq(vcol_expr, false) ? new (thd->mem_root) Item_field(thd, vfield) : NULL;
+  if (item->eq(vcol_expr, false))
+  {
+    return new (thd->mem_root) Item_field(thd, vfield);
+  }
+  return NULL;
 }

@@ -1572,7 +1572,10 @@ public:
   virtual bool is_order_clause_position() const { return false; }
   /* cloning of constant items (0 if it is not const) */
   virtual Item *clone_item(THD *thd) { return 0; }
-  virtual Item* build_clone(THD *thd, const Build_clone_prm &prm) { return get_copy(thd); }
+  virtual Item* build_clone(THD *thd, const Build_clone_prm &prm)
+  {
+    return get_copy(thd);
+  }
   virtual cond_result eq_cmp_result() const { return COND_OK; }
   inline uint float_length(uint decimals_par) const
   { return decimals < FLOATING_POINT_DECIMALS ? (DBL_DIG+2+decimals_par) : DBL_DIG+8;}
@@ -2348,7 +2351,7 @@ public:
   /*
    * returns number of replacements
    */
-  virtual int substitute_expr_with_vcol(Item::Subst_expr_prm *prm);
+  virtual int substitute_expr_with_vcol(Subst_expr_prm *prm);
   Item* find_vfield_replacement(THD *thd, Item *item, Field* vfield);
 };
 
@@ -5018,7 +5021,7 @@ public:
   bool const_item() const { return const_item_cache; }
   table_map used_tables() const { return used_tables_cache; }
   Item* build_clone(THD *thd, const Build_clone_prm &prm);
-  int substitute_expr_with_vcol(Item::Subst_expr_prm *prm);
+  int substitute_expr_with_vcol(Subst_expr_prm *prm);
 };
 
 class sp_head;

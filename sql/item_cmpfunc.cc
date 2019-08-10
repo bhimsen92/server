@@ -7460,8 +7460,8 @@ bool Item_equal::create_pushable_equalities(THD *thd,
     if (checker && !((item->*checker) (arg)))
       continue;
     Item_func_eq *eq= 0;
-    Item *left_item_clone= left_item->build_clone(thd, Build_clone_prm());
-    Item *right_item_clone= item->build_clone(thd, Build_clone_prm());
+    Item *left_item_clone= left_item->build_clone(thd, {});
+    Item *right_item_clone= item->build_clone(thd, {});
     if (left_item_clone && right_item_clone)
     {
       left_item_clone->set_item_equal(NULL);

@@ -27704,7 +27704,7 @@ void JOIN::optimize_vfields_expressions()
 
     Item *select_where = cur_select_lex->where;
     // no where or no tables
-    if (!select_where || !cur_select_lex->table_list.first)
+    if (!select_where)
       continue;
 
     // perform rewrites in all subselects
@@ -27723,12 +27723,13 @@ void rewrite_expr_with_vfieds(THD *thd, Name_resolution_context *context, Item *
   Item::Build_clone_prm build_clone_prm;
   build_clone_prm.return_this_on_subselects = true;
 
-  while (Field **vfield = it++) {
+  while (Field **vfield = it++)
+  {
     Item* clone = (*select_where)->build_clone(thd, build_clone_prm);
     if (!clone)
       break;
 
-    Item::Subst_expr_prm prm = {thd, &clone, *vfield};
+    Item::Subst_expr_prm prm(Item::Subst_expr_prm {thd, &clone, *vfield});
     int replaced = (*select_where)->substitute_expr_with_vcol(&prm);
     if (replaced)
     {
