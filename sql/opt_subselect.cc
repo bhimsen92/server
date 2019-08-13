@@ -3653,6 +3653,7 @@ void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
       SJ_MATERIALIZATION_INFO *sjm= s->emb_sj_nest->sj_mat_info;
       sjm->is_used= TRUE;
       sjm->is_sj_scan= FALSE;
+      bool save_sort_nest_op= pos->sort_nest_operation_here;
       memcpy((uchar*) (pos - sjm->tables + 1), (uchar*) sjm->positions,
              sizeof(POSITION) * sjm->tables);
       recalculate_prefix_record_count(join, tablenr - sjm->tables + 1,
@@ -3660,6 +3661,7 @@ void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
       first= tablenr - sjm->tables + 1;
       join->best_positions[first].n_sj_tables= sjm->tables;
       join->best_positions[first].sj_strategy= SJ_OPT_MATERIALIZE;
+      join->best_positions[first].sort_nest_operation_here= save_sort_nest_op;
       Json_writer_object semijoin_strategy(thd);
       semijoin_strategy.add("semi_join_strategy","sj_materialize");
       Json_writer_array semijoin_plan(thd, "join_order");
