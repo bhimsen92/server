@@ -1815,6 +1815,7 @@ public:
             select_lex->agg_func_used() ||
             thd->lex->sql_command != SQLCOM_SELECT);
   }
+  bool check_if_order_by_expensive();
   bool choose_subquery_plan(table_map join_tables);
   void get_partial_cost_and_fanout(int end_tab_idx,
                                    table_map filter_map,
