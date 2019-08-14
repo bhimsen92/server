@@ -2168,6 +2168,7 @@ double calculate_record_count_for_sort_nest(JOIN *join, uint n_tables);
 void propagate_equal_field_for_orderby(JOIN *join, ORDER *first_order);
 bool check_join_prefix_contains_ordering(JOIN *join, JOIN_TAB *tab,
                                          table_map previous_tables);
+bool create_sort_nest_if_needed(JOIN *join);
 bool setup_sort_nest(JOIN *join);
 void find_keys_that_can_achieve_ordering(JOIN *join, JOIN_TAB *tab);
 double sort_nest_oper_cost(JOIN *join, double join_record_count,

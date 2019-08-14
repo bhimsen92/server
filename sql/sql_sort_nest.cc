@@ -378,6 +378,35 @@ bool check_join_prefix_contains_ordering(JOIN *join, JOIN_TAB *tab,
 }
 
 
+bool create_sort_nest_if_needed(JOIN *join)
+{
+  uint tablenr, n_tables=0;
+  uint table_count= join->table_count;
+  for (tablenr=0 ; tablenr < table_count ; tablenr++)
+  {
+    POSITION *pos= &join->best_positions[tablenr];
+    n_tables++;
+    if (pos->sj_strategy == SJ_OPT_MATERIALIZE ||
+        pos->sj_strategy == SJ_OPT_MATERIALIZE_SCAN)
+    {
+      SJ_MATERIALIZATION_INFO *sjm= pos->table->emb_sj_nest->sj_mat_info;
+      tablenr+= (sjm->tables-1);
+    }
+    if (pos->sort_nest_operation_here)
+    {
+      SORT_NEST_INFO *sort_nest_info;
+      if (!(sort_nest_info= new SORT_NEST_INFO()))
+        return TRUE;
+      sort_nest_info->n_tables= n_tables;
+      join->sort_nest_info= sort_nest_info;
+      DBUG_ASSERT(sort_nest_info->n_tables != 0);
+      return FALSE;
+    }
+  }
+  return FALSE;
+}
+
+
 /*
   Setup the sort-nest struture
 

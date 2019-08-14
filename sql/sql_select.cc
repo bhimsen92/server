@@ -10290,7 +10290,22 @@ bool JOIN::get_best_combination()
   hash_join= FALSE;
 
   fix_semijoin_strategies_for_picked_join_order(this);
-   
+
+  if (create_sort_nest_if_needed(this))
+    DBUG_RETURN(TRUE);
+
+  for (j=join_tab, tablenr=0 ; tablenr < top_join_tab_count + aggr_tables;
+       tablenr++,j++)
+    bzero((void*)j, sizeof(JOIN_TAB));
+
+  if (sort_nest_info)
+  {
+    if (sort_nest_needed())
+      join_tab[const_tables + sort_nest_info->n_tables].is_sort_nest= TRUE;
+    else
+      sort_nest_info->nest_tab= join_tab+const_tables;
+  }
+
   JOIN_TAB_RANGE *root_range;
   if (!(root_range= new (thd->mem_root) JOIN_TAB_RANGE))
     DBUG_RETURN(TRUE);
@@ -10308,6 +10323,23 @@ bool JOIN::get_best_combination()
   {
     TABLE *form;
     POSITION *cur_pos= &best_positions[tablenr];
+
+    if (j->is_sort_nest)
+    {
+      uint tables= sort_nest_info->n_tables;
+      j->join= this;
+      j->table= NULL;
+      j->ref.key = -1;
+      j->on_expr_ref= (Item**) &null_ptr;
+      j->is_sort_nest= TRUE;
+      j->records_read= calculate_record_count_for_sort_nest(this, tables);
+      j->records= (ha_rows) j->records_read;
+      j->cond_selectivity= 1.0;
+      sort_nest_info->nest_tab= j;
+      tablenr--;
+      continue;
+    }
+
     if (cur_pos->sj_strategy == SJ_OPT_MATERIALIZE || 
         cur_pos->sj_strategy == SJ_OPT_MATERIALIZE_SCAN)
     {
@@ -10339,6 +10371,10 @@ bool JOIN::get_best_combination()
         DBUG_RETURN(TRUE);
       jt_range->start= jt;
       jt_range->end= jt + sjm->tables;
+      JOIN_TAB *tab;
+      for (tab= jt; tab < jt_range->end; tab++)
+        bzero((void*)tab, sizeof(JOIN_TAB));
+
       join_tab_ranges.push_back(jt_range, thd->mem_root);
       j->bush_children= jt_range;
       sjm_nest_end= jt + sjm->tables;
@@ -10401,37 +10437,6 @@ bool JOIN::get_best_combination()
       j= sjm_nest_root;
       sjm_nest_root= NULL;
       sjm_nest_end= NULL;
-    }
-    if (cur_pos->sort_nest_operation_here)
-    {
-      /*
-        Ok, we've entered an ORDERING nest
-        1. Put into main join order a JOIN_TAB that represents a scan
-           in the temptable.
-      */
-      JOIN_TAB *prev= j;
-      uint tables= prev - (join_tab + const_tables)+1;
-      if (tables > 1)
-      {
-        j= j+1;
-        bzero((void*)j, sizeof(JOIN_TAB));
-
-        j->join= this;
-        j->table= NULL; //temporary way to tell SJM tables from others.
-        j->ref.key = -1;
-        j->on_expr_ref= (Item**) &null_ptr;
-        j->is_sort_nest= TRUE;
-        j->records_read= calculate_record_count_for_sort_nest(this, tables);
-        j->records= (ha_rows) j->records_read;
-        j->cond_selectivity= 1.0;
-      }
-      SORT_NEST_INFO *sort_nest_info;
-      if (!(sort_nest_info= new SORT_NEST_INFO()))
-        return TRUE;
-      sort_nest_info->n_tables= tables;
-      sort_nest_info->nest_tab= j;
-      this->sort_nest_info= sort_nest_info;
-      DBUG_ASSERT(sort_nest_info->n_tables != 0);
     }
   }
   root_range->end= j;
