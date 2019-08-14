@@ -457,18 +457,41 @@ bool setup_sort_nest(JOIN *join)
 
   for (j= start_tab; j < tab; j++)
   {
-    TABLE *table= j->table;
-    field_iterator.set_table(table);
-    sort_nest_info->nest_tables_map|= table->map;
-    for (; !field_iterator.end_of_fields(); field_iterator.next())
+    sort_nest_info->nest_tables_map|= j->table->map;
+    if (j->bush_children)
     {
-      Field *field= field_iterator.field();
-      if (!bitmap_is_set(table->read_set, field->field_index))
-        continue;
+      TABLE_LIST *emb_sj_nest;
+      JOIN_TAB *child_tab= j->bush_children->start;
+      emb_sj_nest= child_tab->table->pos_in_table_list->embedding;
+
+      /*
+        Walk out of outer join nests until we reach the semi-join
+        nest we're in
+        Picked from setup_sj_materialization_part1
+      */
+      while (!emb_sj_nest->sj_mat_info)
+        emb_sj_nest= emb_sj_nest->embedding;
+      Item_in_subselect *item_sub= emb_sj_nest->sj_subq_pred;
+      SELECT_LEX *subq_select= item_sub->unit->first_select();
+      List_iterator_fast<Item> li(subq_select->item_list);
       Item *item;
-      if (!(item= field_iterator.create_item(thd)))
-        return TRUE;
-      sort_nest_info->nest_base_table_cols.push_back(item, thd->mem_root);
+      while((item= li++))
+        sort_nest_info->nest_base_table_cols.push_back(item, thd->mem_root);
+    }
+    else
+    {
+      TABLE *table= j->table;
+      field_iterator.set_table(table);
+      for (; !field_iterator.end_of_fields(); field_iterator.next())
+      {
+        Field *field= field_iterator.field();
+        if (!bitmap_is_set(table->read_set, field->field_index))
+          continue;
+        Item *item;
+        if (!(item= field_iterator.create_item(thd)))
+          return TRUE;
+        sort_nest_info->nest_base_table_cols.push_back(item, thd->mem_root);
+      }
     }
   }
 
