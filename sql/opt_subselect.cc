@@ -3682,11 +3682,14 @@ void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
       sjm->is_used= TRUE;
       sjm->is_sj_scan= TRUE;
       first= pos->sjmat_picker.sjm_scan_last_inner - sjm->tables + 1;
+      POSITION *last_inner= join->best_positions+ first + sjm->tables - 1;
+      bool save_sort_nest_op= last_inner->sort_nest_operation_here;
       memcpy((uchar*) (join->best_positions + first),
              (uchar*) sjm->positions, sizeof(POSITION) * sjm->tables);
       recalculate_prefix_record_count(join, first, first + sjm->tables);
       join->best_positions[first].sj_strategy= SJ_OPT_MATERIALIZE_SCAN;
       join->best_positions[first].n_sj_tables= sjm->tables;
+      join->best_positions[first].sort_nest_operation_here= save_sort_nest_op;
       /* 
         Do what advance_sj_state did: re-run best_access_path for every table
         in the [last_inner_table + 1; pos..) range
@@ -3722,14 +3725,16 @@ void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
           Json_writer_object trace_one_table(thd);
           trace_one_table.add_table_name(join->best_positions[i].table);
         }
+        save_sort_nest_op= join->best_positions[i].sort_nest_operation_here;
         best_access_path(join, join->best_positions[i].table, rem_tables, i, 
                          FALSE, prefix_rec_count,
                          join->best_positions + i, &dummy, &index_used);
+        join->best_positions[i].sort_nest_operation_here= save_sort_nest_op;
         prefix_rec_count *= join->best_positions[i].records_read;
         rem_tables &= ~join->best_positions[i].table->table->map;
       }
     }
- 
+
     if (pos->sj_strategy == SJ_OPT_FIRST_MATCH)
     {
       first= pos->firstmatch_picker.first_firstmatch_table;
@@ -3847,7 +3852,10 @@ void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
     for (uint i= first; i < i_end; i++)
     {
       if (i != first)
+      {
         join->best_positions[i].sj_strategy= SJ_OPT_NONE;
+        DBUG_ASSERT(!join->best_positions[i].sort_nest_operation_here);
+      }
       handled_tabs |= join->best_positions[i].table->table->map;
     }
 
