@@ -8607,12 +8607,18 @@ greedy_search(JOIN      *join,
                                          :
                                          ~(table_map)0));
 
+  join->sort_nest_possible= (join->sort_nest_allowed() &&
+                             !join->check_if_order_by_expensive());
+
   do {
     /* Find the extension of the current QEP with the lowest cost */
     join->best_read= DBL_MAX;
     table_map previous_tables= 0;
-    if (best_extension_by_limited_search(join, remaining_tables, idx, record_count,
-                                         read_time, search_depth, prune_level,
+    if (best_extension_by_limited_search(join, remaining_tables, idx,
+                                         record_count, read_time,
+                                         search_depth,
+                                         (join->sort_nest_possible ? 0 :
+                                          prune_level),
                                          use_cond_selectivity,
                                          previous_tables, FALSE, &cardinality))
       DBUG_RETURN(TRUE);
@@ -9504,8 +9510,8 @@ best_extension_by_limited_search(JOIN      *join,
           DBUG_RETURN(TRUE);
         trace_rest.end();
 
-        if (!nest_created && !join->emb_sjm_nest && join->order && nest_allow &&
-            join->sort_nest_allowed() &&
+        if (!nest_created && !join->emb_sjm_nest && join->order &&
+            nest_allow && join->sort_nest_possible &&
             check_join_prefix_contains_ordering(join, s, previous_tables))
         {
           join->positions[idx].sort_nest_operation_here= TRUE;
