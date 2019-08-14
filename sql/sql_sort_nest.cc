@@ -378,6 +378,12 @@ bool check_join_prefix_contains_ordering(JOIN *join, JOIN_TAB *tab,
 }
 
 
+/*
+  Checks if it is possible to create a sort nest, if yes
+  then it creates the structure for sort-nest
+  that includes the number of tables inside the sort-nest
+*/
+
 bool create_sort_nest_if_needed(JOIN *join)
 {
   uint tablenr, n_tables=0;
