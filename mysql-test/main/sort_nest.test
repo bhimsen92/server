@@ -59,9 +59,13 @@ delimiter ;|
 
 let $query= 
 select * from t1,t2,t3 where t1.a > 95 and  t1.a=t2.a and t1.b = t3.a order by t2.b;
+
+alter table t2 add key(a);
 eval explain $query;
 eval explain format=json $query;
 eval $query;
+
+alter table t2 drop key a;
 
 --echo # {t1,t2} part of the sort nest
 --echo # (t2.a < 2 or t1.b > 98) would be attached to table t2
@@ -259,10 +263,10 @@ insert t2 (b) values (1), (2);
 create view v1 as select t2.b,t2.c from t1, t2
 where t1.a=t2.b and t2.b < 3 with check option;
 
-let $query= select * from v1,t0 where b<3 and x=c order by x,b desc limit 2;
+let $query= select * from v1,t0 where b<3 order by x,b desc limit 2;
 eval explain $query;
 eval explain format=json $query;
-eval select * from v1,t0 where b<3 and x=c order by x,b desc limit 2;
+eval $query;
 drop table t0,t1,t2;
 drop view v1;
 

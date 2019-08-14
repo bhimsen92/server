@@ -74,11 +74,12 @@ Covering 3 table joins
 # {t1,t2} part of the nest
 # t1.a > 95 would be attached to table t1
 # t1.b=t2.a would be attached to table t2;
+alter table t2 add key(a);
 explain select * from t1,t2,t3 where t1.a > 95 and  t1.a=t2.a and t1.b = t3.a order by t2.b;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	100	Using where
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	102	Using where; Using join buffer (flat, BNL join)
-1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	10200	Using filesort
+1	SIMPLE	t2	ref	a	a	5	test.t1.a	1	
+1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	100	Using filesort
 1	SIMPLE	t3	ALL	NULL	NULL	NULL	NULL	1000	Using where
 explain format=json select * from t1,t2,t3 where t1.a > 95 and  t1.a=t2.a and t1.b = t3.a order by t2.b;
 EXPLAIN
@@ -90,19 +91,18 @@ EXPLAIN
       "access_type": "ALL",
       "rows": 100,
       "filtered": 100,
-      "attached_condition": "t1.a > 95"
+      "attached_condition": "t1.a > 95 and t1.a is not null"
     },
-    "block-nl-join": {
-      "table": {
-        "table_name": "t2",
-        "access_type": "ALL",
-        "rows": 102,
-        "filtered": 100
-      },
-      "buffer_type": "flat",
-      "buffer_size": "1Kb",
-      "join_type": "BNL",
-      "attached_condition": "t2.a = t1.a"
+    "table": {
+      "table_name": "t2",
+      "access_type": "ref",
+      "possible_keys": ["a"],
+      "key": "a",
+      "key_length": "5",
+      "used_key_parts": ["a"],
+      "ref": ["test.t1.a"],
+      "rows": 1,
+      "filtered": 100
     },
     "read_sorted_file": {
       "filesort": {
@@ -110,7 +110,7 @@ EXPLAIN
         "table": {
           "table_name": "<sort-nest>",
           "access_type": "ALL",
-          "rows": 10200,
+          "rows": 100,
           "filtered": 100
         }
       }
@@ -130,6 +130,7 @@ a	b	a	b	a	b
 97	97	97	97	97	97
 98	98	98	98	98	98
 99	99	99	99	99	99
+alter table t2 drop key a;
 # {t1,t2} part of the sort nest
 # (t2.a < 2 or t1.b > 98) would be attached to table t2
 explain select * from t1,t2,t3 where (t3.a<2 and  t2.a <2) or (t1.b > 98 and t3.b > 98)
@@ -1093,13 +1094,13 @@ insert t1 (a) values (1), (2);
 insert t2 (b) values (1), (2);
 create view v1 as select t2.b,t2.c from t1, t2
 where t1.a=t2.b and t2.b < 3 with check option;
-explain select * from v1,t0 where b<3 and x=c order by x,b desc limit 2;
+explain select * from v1,t0 where b<3 order by x,b desc limit 2;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	SIMPLE	t1	ALL	NULL	NULL	NULL	NULL	2	Using where
-1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	2	Using where; Using join buffer (flat, BNL join)
+1	SIMPLE	t0	ALL	NULL	NULL	NULL	NULL	2	Using join buffer (flat, BNL join)
 1	SIMPLE	<sort-nest>	ALL	NULL	NULL	NULL	NULL	4	Using filesort
-1	SIMPLE	t0	ALL	NULL	NULL	NULL	NULL	2	Using where
-explain format=json select * from v1,t0 where b<3 and x=c order by x,b desc limit 2;
+1	SIMPLE	t2	ALL	NULL	NULL	NULL	NULL	2	Using where
+explain format=json select * from v1,t0 where b<3 order by x,b desc limit 2;
 EXPLAIN
 {
   "query_block": {
@@ -1113,19 +1114,18 @@ EXPLAIN
     },
     "block-nl-join": {
       "table": {
-        "table_name": "t2",
+        "table_name": "t0",
         "access_type": "ALL",
         "rows": 2,
         "filtered": 100
       },
       "buffer_type": "flat",
       "buffer_size": "65",
-      "join_type": "BNL",
-      "attached_condition": "t2.b = t1.a"
+      "join_type": "BNL"
     },
     "read_sorted_file": {
       "filesort": {
-        "sort_key": "`sort-nest`.c, `sort-nest`.a desc",
+        "sort_key": "`sort-nest`.x, `sort-nest`.a desc",
         "table": {
           "table_name": "<sort-nest>",
           "access_type": "ALL",
@@ -1135,15 +1135,15 @@ EXPLAIN
       }
     },
     "table": {
-      "table_name": "t0",
+      "table_name": "t2",
       "access_type": "ALL",
       "rows": 2,
       "filtered": 100,
-      "attached_condition": "t0.x = `sort-nest`.c"
+      "attached_condition": "t2.b = `sort-nest`.a"
     }
   }
 }
-select * from v1,t0 where b<3 and x=c order by x,b desc limit 2;
+select * from v1,t0 where b<3 order by x,b desc limit 2;
 b	c	x
 2	0	0
 1	0	0
