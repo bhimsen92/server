@@ -33,3 +33,37 @@ eval explain format=json $query;
 eval $query;
 
 drop table t0,t1,t2,t3,t4;
+
+--echo #
+--echo # SEMI JOIN MATERIALIZATION LOOKUP with SORT-NEST
+--echo #
+
+create table t0(a int);
+insert t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+
+create table t1 (a int, b int, c int, key(a));
+insert t1 select A.a+B.a*10+C.a*100, A.a+B.a*10+C.a*100, A.a+B.a*10+C.a*100 from t0 A, t0 B, t0 C;
+
+create table t2 (a int, b int, c int, key(c));
+insert t2 select A.a+B.a*10, A.a+B.a*10, A.a+B.a*10 from t0 A, t0 B;
+
+create table t3 (a int, b int, c int, key(a));
+insert t3 select a,a,a from t0;
+
+create table t4 (a int, b int, c int);
+insert t4 select A.a+B.a*10, A.a+B.a*10, A.a+B.a*10 from t0 A, t0 B;
+
+let $query= SELECT t1.a as w, t2.b as x, ot1.a as y, ot1.b as z
+            FROM t1, t2, t2 ot1
+              WHERE ot1.a in (select it.b from t1 it)
+                    AND t1.a < 5
+                    AND t1.a= ot1.b
+                    AND t2.c < 5
+            ORDER BY ot1.a desc, t2.b desc
+            LIMIT 5;
+
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+drop table t0,t1,t2,t3,t4;

@@ -110,3 +110,129 @@ a	a	b	b
 1	1	1	1
 0	0	0	0
 drop table t0,t1,t2,t3,t4;
+#
+# SEMI JOIN MATERIALIZATION LOOKUP with SORT-NEST
+#
+create table t0(a int);
+insert t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, b int, c int, key(a));
+insert t1 select A.a+B.a*10+C.a*100, A.a+B.a*10+C.a*100, A.a+B.a*10+C.a*100 from t0 A, t0 B, t0 C;
+create table t2 (a int, b int, c int, key(c));
+insert t2 select A.a+B.a*10, A.a+B.a*10, A.a+B.a*10 from t0 A, t0 B;
+create table t3 (a int, b int, c int, key(a));
+insert t3 select a,a,a from t0;
+create table t4 (a int, b int, c int);
+insert t4 select A.a+B.a*10, A.a+B.a*10, A.a+B.a*10 from t0 A, t0 B;
+explain SELECT t1.a as w, t2.b as x, ot1.a as y, ot1.b as z
+FROM t1, t2, t2 ot1
+WHERE ot1.a in (select it.b from t1 it)
+AND t1.a < 5
+AND t1.a= ot1.b
+AND t2.c < 5
+ORDER BY ot1.a desc, t2.b desc
+LIMIT 5;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	t2	range	c	c	5	NULL	3	Using index condition
+1	PRIMARY	ot1	ALL	NULL	NULL	NULL	NULL	100	Using where; Using join buffer (flat, BNL join)
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	300	Using filesort
+1	PRIMARY	<subquery2>	eq_ref	distinct_key	distinct_key	4	func	1	
+1	PRIMARY	t1	ref	a	a	5	sort-nest.b	1	Using index
+2	MATERIALIZED	it	ALL	NULL	NULL	NULL	NULL	1000	
+explain format=json SELECT t1.a as w, t2.b as x, ot1.a as y, ot1.b as z
+FROM t1, t2, t2 ot1
+WHERE ot1.a in (select it.b from t1 it)
+AND t1.a < 5
+AND t1.a= ot1.b
+AND t2.c < 5
+ORDER BY ot1.a desc, t2.b desc
+LIMIT 5;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "t2",
+      "access_type": "range",
+      "possible_keys": ["c"],
+      "key": "c",
+      "key_length": "5",
+      "used_key_parts": ["c"],
+      "rows": 3,
+      "filtered": 100,
+      "index_condition": "t2.c < 5"
+    },
+    "block-nl-join": {
+      "table": {
+        "table_name": "ot1",
+        "access_type": "ALL",
+        "rows": 100,
+        "filtered": 100
+      },
+      "buffer_type": "flat",
+      "buffer_size": "119",
+      "join_type": "BNL",
+      "attached_condition": "ot1.b < 5"
+    },
+    "read_sorted_file": {
+      "filesort": {
+        "sort_key": "`sort-nest`.a desc, `sort-nest`.b desc",
+        "table": {
+          "table_name": "<sort-nest>",
+          "access_type": "ALL",
+          "rows": 300,
+          "filtered": 100
+        }
+      }
+    },
+    "table": {
+      "table_name": "<subquery2>",
+      "access_type": "eq_ref",
+      "possible_keys": ["distinct_key"],
+      "key": "distinct_key",
+      "key_length": "4",
+      "used_key_parts": ["b"],
+      "ref": ["func"],
+      "rows": 1,
+      "filtered": 100,
+      "materialized": {
+        "unique": 1,
+        "query_block": {
+          "select_id": 2,
+          "table": {
+            "table_name": "it",
+            "access_type": "ALL",
+            "rows": 1000,
+            "filtered": 100
+          }
+        }
+      }
+    },
+    "table": {
+      "table_name": "t1",
+      "access_type": "ref",
+      "possible_keys": ["a"],
+      "key": "a",
+      "key_length": "5",
+      "used_key_parts": ["a"],
+      "ref": ["sort-nest.b"],
+      "rows": 1,
+      "filtered": 100,
+      "using_index": true
+    }
+  }
+}
+SELECT t1.a as w, t2.b as x, ot1.a as y, ot1.b as z
+FROM t1, t2, t2 ot1
+WHERE ot1.a in (select it.b from t1 it)
+AND t1.a < 5
+AND t1.a= ot1.b
+AND t2.c < 5
+ORDER BY ot1.a desc, t2.b desc
+LIMIT 5;
+w	x	y	z
+4	4	4	4
+4	3	4	4
+4	2	4	4
+4	1	4	4
+4	0	4	4
+drop table t0,t1,t2,t3,t4;
