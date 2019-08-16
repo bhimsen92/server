@@ -133,6 +133,8 @@ void substitute_base_with_nest_items(JOIN *join)
       *tab->on_expr_ref= item;
       (*tab->on_expr_ref)->update_used_tables();
     }
+    if (tab->bush_children)
+      substitutions_for_sjm_lookup(join, tab);
   }
 
   extract_condition_for_the_nest(join);
@@ -144,6 +146,32 @@ void substitute_base_with_nest_items(JOIN *join)
     conds->update_used_tables();
   }
   join->conds= conds;
+}
+
+
+void substitutions_for_sjm_lookup(JOIN *join, JOIN_TAB *sjm_tab)
+{
+  JOIN_TAB *tab= sjm_tab->bush_children->start;
+  TABLE_LIST *emb_sj_nest= tab->table->pos_in_table_list->embedding;
+
+  /*
+    Walk out of outer join nests until we reach the semi-join nest
+    we're in
+  */
+  while (!emb_sj_nest->sj_mat_info)
+    emb_sj_nest= emb_sj_nest->embedding;
+  SJ_MATERIALIZATION_INFO *sjm= emb_sj_nest->sj_mat_info;
+  THD *thd= join->thd;
+
+  if (!sjm->is_sj_scan)
+  {
+    Item *left_expr= emb_sj_nest->sj_subq_pred->left_expr;
+    REPLACE_NEST_FIELD_ARG arg= {join};
+    left_expr= left_expr->transform(thd, &Item::replace_with_nest_items,
+                                    (uchar *)&arg);
+    left_expr->update_used_tables();
+    emb_sj_nest->sj_subq_pred->left_expr= left_expr;
+  }
 }
 
 

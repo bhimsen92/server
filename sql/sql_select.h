@@ -2175,6 +2175,7 @@ double sort_nest_oper_cost(JOIN *join, double join_record_count,
                            ulong rec_len, uint idx);
 bool needs_filesort(JOIN_TAB *tab, uint idx, int index_used);
 void substitute_base_with_nest_items(JOIN *join);
+void substitutions_for_sjm_lookup(JOIN *join, JOIN_TAB *sjm_tab);
 void extract_condition_for_the_nest(JOIN *join);
 void check_cond_extraction_for_nest(THD *thd, Item *cond,
                                     Pushdown_checker checker, uchar* arg);
