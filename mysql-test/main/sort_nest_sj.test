@@ -1,0 +1,35 @@
+--echo #
+--echo # SORT-NEST WITH SEMI JOINS
+--echo #
+
+--echo # SEMI JOIN MATERIALIZATION SCAN with SORT-NEST
+
+create table t0(a int);
+insert t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+
+create table t1 (a int, b int, c int);
+insert t1 select A.a+B.a*10+C.a*100, A.a+B.a*10+C.a*100, A.a+B.a*10+C.a*100 from t0 A, t0 B, t0 C;
+
+create table t2 (a int, b int, c int);
+insert t2 select a,a,a from t0;
+
+create table t3 (a int, b int, c int, key(a));
+insert t3 select a,a,a from t0;
+
+create table t4 (a int, b int, c int, key(a));
+insert t4 select a,a,a from t0;
+
+--echo # SJM scan inside the sort-nest
+--echo # sort-nest includes (<subqery2>, t2)
+
+let $query= SELECT t1.a, t2.a, t1.b,t2.b 
+            FROM t1, t2 
+              WHERE t1.a=t2.a and
+                    t1.b in (select t3.b from t3,t4 where t3.a < 3 and t3.a=t4.a) 
+            ORDER BY t1.b desc ,t2.b desc
+            LIMIT 5;
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+drop table t0,t1,t2,t3,t4;
