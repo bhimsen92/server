@@ -67,3 +67,34 @@ eval explain format=json $query;
 eval $query;
 
 drop table t0,t1,t2,t3,t4;
+
+--echo #
+--echo # Firstmatch strategy
+--echo #
+
+create table t0(a int);
+insert t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, b int, c int, key(a));
+insert t1 select a,a,a from t0;
+create table t2 as select * from t1;
+create table t3 as select * from t1;
+let $query= select * from t1, t2 where t1.a=t2.a and
+            t1.b in (select b from t3 where t3.c<=t2.c) order by t2.c desc, t1.c desc limit 5;
+
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+set optimizer_switch='firstmatch=off';
+
+--echo #
+--echo # Duplicate Weedout strategy
+--echo #
+
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+set optimizer_switch=default;
+drop table t0,t1,t2,t3;
+
