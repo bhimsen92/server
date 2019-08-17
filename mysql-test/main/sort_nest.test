@@ -1,33 +1,30 @@
-create table ten(a int);
-insert into ten values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
-create table one_k(a int);
-insert into one_k select A.a + B.a* 10 from ten A, ten B;
+create table t0 (a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
 create table t1 (a int, b int);
-insert into t1 select a,a from one_k;
+insert into t1 select a,a from t0 where a <5; # 5 rows
+create table t2 as select * from t1 where a < 5; # 5 rows
+create table t3(a int, b int, c int);
+insert into t3 select A.a + 10*B.a, A.a + 10*B.a, A.a + 10*B.a from t0 A, t0 B; # 100 rows
 
-create table t2 (a int, b int);
-insert into t2 select a,a from one_k;
-explain
-select t1.b from t1,t2 where t1.a=t2.a  order by t2.b limit 2;
-select t1.b from t1,t2 where t1.a=t2.a  order by t2.b limit 2;
+alter table t3 add key(a);
 
-analyze
-select t1.a,t2.a from t1,t2 where t1.a=t2.a  order by t2.b limit 10;
-select t1.a,t2.a from t1,t2 where t1.a=t2.a  order by t2.b limit 10;
+--echo #
+--echo # sort-nest(t2,t1)
+--echo # ref(sort-nest.b) access on table t3
+--echo #
 
-alter table t1 add key (a);
+let $query= SELECT t1.a, t2.b, t1.b, t3.a from t1,t2,t3
+            WHERE t1.a=t2.a and t2.b=t3.a
+            ORDER BY t2.b desc, t1.b desc
+            LIMIT 5;
 
---echo ref should be func
-explain
-select t1.b,t2.b from t1,t2 where t1.a=t2.a+1  order by t2.b limit 2;
-select t1.b,t2.b from t1,t2 where t1.a=t2.a+1  order by t2.b limit 2;
+eval EXPLAIN $query;
+eval EXPLAIN FORMAT=JSON $query;
+eval $query;
 
---echo ref should be order-nest.a
-explain
-select t1.b,t2.b from t1,t2 where t1.a=t2.a  order by t2.b limit 2;
-select t1.b,t2.b from t1,t2 where t1.a=t2.a  order by t2.b limit 2;
+alter table t3 drop key a;
 
-drop table t1,t2,ten,one_k;
+drop table t0,t1,t2,t3;
 
 create table ten(a int);
 insert into ten values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
@@ -53,9 +50,12 @@ delimiter ;|
 
 --echo Covering 3 table joins
 
+--echo
 --echo # {t1,t2} part of the nest
 --echo # t1.a > 95 would be attached to table t1
 --echo # t1.b=t2.a would be attached to table t2;
+--echo # t3.a= sort-nest.b would be attached to table t3
+--echo
 
 let $query= 
 select * from t1,t2,t3 where t1.a > 95 and  t1.a=t2.a and t1.b = t3.a order by t2.b;
@@ -67,19 +67,23 @@ eval $query;
 
 alter table t2 drop key a;
 
+--echo
 --echo # {t1,t2} part of the sort nest
 --echo # (t2.a < 2 or t1.b > 98) would be attached to table t2
+--echo
 
 let $query= 
-select * from t1,t2,t3 where (t3.a<2 and  t2.a <2) or (t1.b > 98 and t3.b > 98)
+select * from t1,t2,t3 where (t3.a < 2 and t2.a < 2) or (t1.b > 98 and t3.b > 98)
 order by t1.a, t2.b limit 5;
 eval explain $query;
 eval explain format=json $query;
 eval $query;
 
+--echo
 --echo # {t1,t2} part of the nest
 --echo # t2.a < 2 or f1(t1.b) attached to table t2
 --echo # t1.b=t2.a would be attached to table t2;
+--echo
 
 let $query= 
 select * from t1,t2,t3 where (t3.a<2  and t2.a <2) or (f1(t1.b) > 98 and t3.b > 98)
@@ -103,7 +107,6 @@ select * from t1,t2 where t1.a > 95  and t1.a=t2.a order by 1+2,t2.a limit 4;
 eval explain $query;
 eval explain format=json $query;
 eval $query;
-
 
 --echo #
 --echo # Equality propagation, both the queries should use a sort nest on {t1,t2}
@@ -185,36 +188,6 @@ drop index idx2 on t2;
 drop index idx3 on t3;
 drop table t1,t2,t3,ten,one_k;
 drop function f1;
-
---echo #
---echo # Non merged semi-join
---echo #
-
-
-create table t0 (a int);
-insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
-create table t1 (a int, b int);
-insert into t1 select a,a from t0 where a <5;  # 10 rows
-create table t2 as select * from t1 where a < 5;  # 10 rows
-create table t3(a int, b int);
-insert into t3 select (A.a + 10*B.a+C.a*100) as a, (A.a + 10*B.a+C.a*100) as b from t0 A, t0 B,t0 C; # 100 rows
-
---echo <subquery2> outside the sort-nest
-
-let $query= select * from t2,t1 where t1.a in (select max(t3.a) from t3 group by t3.b) order by t2.a,t1.a limit 5;
-eval explain $query;
-eval explain format=json $query;
-eval $query;
-
---echo <subquery2> inside the sort-nest
-
-alter table t3 add key(b);
-let $query= select * from t3,t2 where t3.a in (select max(t1.a) from t1 group by t1.b) order by t3.a,t2.a limit 5;
-eval explain $query;
-eval explain format=json $query;
-eval $query;
-
-drop table t1,t2,t3,t0;
 
 --echo Derived table inside a sort-nest
 
@@ -415,4 +388,3 @@ eval explain format=json $query;
 eval $query;
 
 drop table t0,t1,t2,t3;
-

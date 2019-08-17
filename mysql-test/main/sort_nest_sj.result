@@ -1,6 +1,9 @@
 #
 # SORT-NEST WITH SEMI JOINS
 #
+
+# MERGED SEMI-JOINS
+
 # SEMI JOIN MATERIALIZATION SCAN with SORT-NEST
 create table t0(a int);
 insert t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
@@ -372,3 +375,189 @@ a	b	c	a	b	c
 5	5	5	5	5	5
 set optimizer_switch=default;
 drop table t0,t1,t2,t3;
+
+# NON-MERGED SEMI JOINS
+
+create table t0 (a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, b int);
+insert into t1 select a,a from t0 where a <5;
+create table t2 as select * from t1 where a < 5;
+create table t3(a int, b int);
+insert into t3 select A.a + 10*B.a, A.a + 10*B.a from t0 A, t0 B;
+<subquery2> outside the sort-nest
+EXPLAIN SELECT * from t2,t1
+WHERE t2.b=t1.b
+AND
+t1.a IN (select max(t3.a) FROM t3 GROUP BY t3.b)
+ORDER BY t2.a desc,t1.a desc
+LIMIT 5;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	5	
+1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	5	Using where; Using join buffer (flat, BNL join)
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	25	Using filesort
+1	PRIMARY	<subquery2>	eq_ref	distinct_key	distinct_key	4	sort-nest.a	1	
+2	MATERIALIZED	t3	ALL	NULL	NULL	NULL	NULL	100	Using temporary
+EXPLAIN FORMAT=JSON SELECT * from t2,t1
+WHERE t2.b=t1.b
+AND
+t1.a IN (select max(t3.a) FROM t3 GROUP BY t3.b)
+ORDER BY t2.a desc,t1.a desc
+LIMIT 5;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "t2",
+      "access_type": "ALL",
+      "rows": 5,
+      "filtered": 100
+    },
+    "block-nl-join": {
+      "table": {
+        "table_name": "t1",
+        "access_type": "ALL",
+        "rows": 5,
+        "filtered": 100
+      },
+      "buffer_type": "flat",
+      "buffer_size": "119",
+      "join_type": "BNL",
+      "attached_condition": "t1.b = t2.b"
+    },
+    "read_sorted_file": {
+      "filesort": {
+        "sort_key": "`sort-nest`.a desc, `sort-nest`.a desc",
+        "table": {
+          "table_name": "<sort-nest>",
+          "access_type": "ALL",
+          "rows": 25,
+          "filtered": 100
+        }
+      }
+    },
+    "table": {
+      "table_name": "<subquery2>",
+      "access_type": "eq_ref",
+      "possible_keys": ["distinct_key"],
+      "key": "distinct_key",
+      "key_length": "4",
+      "used_key_parts": ["max(t3.a)"],
+      "ref": ["sort-nest.a"],
+      "rows": 1,
+      "filtered": 100,
+      "materialized": {
+        "unique": 1,
+        "query_block": {
+          "select_id": 2,
+          "temporary_table": {
+            "table": {
+              "table_name": "t3",
+              "access_type": "ALL",
+              "rows": 100,
+              "filtered": 100
+            }
+          }
+        }
+      }
+    }
+  }
+}
+SELECT * from t2,t1
+WHERE t2.b=t1.b
+AND
+t1.a IN (select max(t3.a) FROM t3 GROUP BY t3.b)
+ORDER BY t2.a desc,t1.a desc
+LIMIT 5;
+a	b	a	b
+4	4	4	4
+3	3	3	3
+2	2	2	2
+1	1	1	1
+0	0	0	0
+<subquery2> inside the sort-nest
+EXPLAIN SELECT * FROM t3,t2
+WHERE t3.b=t2.b AND
+t3.a IN (select max(t1.a) FROM t1 GROUP BY t1.b)
+ORDER BY t3.a desc,t2.a desc
+LIMIT 5;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	5	
+1	PRIMARY	<subquery2>	ALL	distinct_key	NULL	NULL	NULL	5	Using join buffer (flat, BNL join)
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	25	Using filesort
+1	PRIMARY	t3	ALL	NULL	NULL	NULL	NULL	100	Using where
+2	MATERIALIZED	t1	ALL	NULL	NULL	NULL	NULL	5	Using temporary
+EXPLAIN FORMAT=JSON SELECT * FROM t3,t2
+WHERE t3.b=t2.b AND
+t3.a IN (select max(t1.a) FROM t1 GROUP BY t1.b)
+ORDER BY t3.a desc,t2.a desc
+LIMIT 5;
+EXPLAIN
+{
+  "query_block": {
+    "select_id": 1,
+    "table": {
+      "table_name": "t2",
+      "access_type": "ALL",
+      "rows": 5,
+      "filtered": 100
+    },
+    "block-nl-join": {
+      "table": {
+        "table_name": "<subquery2>",
+        "access_type": "ALL",
+        "possible_keys": ["distinct_key"],
+        "rows": 5,
+        "filtered": 100
+      },
+      "buffer_type": "flat",
+      "buffer_size": "119",
+      "join_type": "BNL",
+      "materialized": {
+        "unique": 1,
+        "query_block": {
+          "select_id": 2,
+          "temporary_table": {
+            "table": {
+              "table_name": "t1",
+              "access_type": "ALL",
+              "rows": 5,
+              "filtered": 100
+            }
+          }
+        }
+      }
+    },
+    "read_sorted_file": {
+      "filesort": {
+        "sort_key": "`sort-nest`.`max(t1.a)` desc, `sort-nest`.a desc",
+        "table": {
+          "table_name": "<sort-nest>",
+          "access_type": "ALL",
+          "rows": 25,
+          "filtered": 100
+        }
+      }
+    },
+    "table": {
+      "table_name": "t3",
+      "access_type": "ALL",
+      "rows": 100,
+      "filtered": 100,
+      "attached_condition": "t3.a = `sort-nest`.`max(t1.a)` and t3.b = `sort-nest`.b"
+    }
+  }
+}
+SELECT * FROM t3,t2
+WHERE t3.b=t2.b AND
+t3.a IN (select max(t1.a) FROM t1 GROUP BY t1.b)
+ORDER BY t3.a desc,t2.a desc
+LIMIT 5;
+a	b	a	b
+4	4	4	4
+3	3	3	3
+2	2	2	2
+1	1	1	1
+0	0	0	0
+drop table t1,t2,t3,t0;

@@ -1,0 +1,24 @@
+create table ten(a int);
+insert into ten values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, b int);
+insert into t1  select A.a + B.a* 10, A.a + B.a* 10 from ten A, ten B;
+
+create table t2 (a int, b int, c int,  key(b));
+insert into t2 select a,a,a from t1;
+
+let $query= SELECT t1.b FROM t1,t2 WHERE t1.a=t2.a and t2.b < 10  ORDER BY t2.c desc LIMIT 2;
+
+--echo #
+--echo # The plan here should be Filesort on t2
+--echo #
+
+eval EXPLAIN $query;
+eval $query;
+
+alter table t1 add key (a);
+
+--echo ref access would be used on table t1
+eval EXPLAIN $query;
+eval $query;
+
+drop table t1,t2,ten;
