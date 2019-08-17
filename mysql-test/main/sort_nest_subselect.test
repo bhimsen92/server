@@ -1,0 +1,34 @@
+--echo #
+--echo # Testing SORT-NEST with Subqueries (not semi-joins)
+--echo #
+--echo 
+
+--echo #
+--echo # Dependent subquery attached to table t3 outside the sort-nest(t1,t2)
+--echo #
+
+create table t0 (a int);
+insert into t0 values (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
+create table t1 (a int, b int);
+insert into t1 select a,a from t0 where a <5; # 5 rows
+create table t2 as select * from t1 where a < 5; # 5 rows
+create table t3(a int, b int, c int);
+insert into t3 select A.a + 10*B.a, A.a + 10*B.a, A.a + 10*B.a from t0 A, t0 B; # 100 rows
+
+create table t4(a int, b int, c int, key(b));
+insert into t4 select A.a + 10*B.a, A.a + 10*B.a, A.a + 10*B.a from t0 A, t0 B; # 100 rows
+
+--echo ref access inside the dependent subquery should be with sort-nest.b instead of t1.b
+
+let $query= SELECT * FROM t1,t2,t3
+            WHERE t1.b=t2.b and
+            EXISTS (select 1 from t4 where t4.b=t1.b group by t4.c having t3.b=max(t4.a))
+            ORDER BY t2.a desc,t1.a desc
+            LIMIT 5;
+
+eval explain $query;
+eval explain format=json $query;
+eval $query;
+
+drop table t0,t1,t2,t3,t4;
+
