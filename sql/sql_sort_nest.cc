@@ -79,11 +79,11 @@ void substitute_base_with_nest_items(JOIN *join)
     if ((new_item= item->transform(thd,
                                    &Item::replace_with_nest_items,
                                    (uchar *) &arg)) != item)
-      {
-        new_item->name= item->name;
-        thd->change_item_tree(it.ref(), new_item);
-        it.replace(new_item);
-      }
+    {
+      new_item->name= item->name;
+      thd->change_item_tree(it.ref(), new_item);
+      it.replace(new_item);
+    }
     new_item->update_used_tables();
   }
 
@@ -107,7 +107,7 @@ void substitute_base_with_nest_items(JOIN *join)
     {
       for (uint keypart= 0; keypart < tab->ref.key_parts; keypart++)
       {
-        item= tab->ref.items[keypart]->transform(join->thd,
+        item= tab->ref.items[keypart]->transform(thd,
                                                  &Item::replace_with_nest_items,
                                                  (uchar *) &arg);
         if (item != tab->ref.items[keypart])
@@ -127,7 +127,7 @@ void substitute_base_with_nest_items(JOIN *join)
 
     if (*tab->on_expr_ref)
     {
-      item= (*tab->on_expr_ref)->transform(join->thd,
+      item= (*tab->on_expr_ref)->transform(thd,
                                            &Item::replace_with_nest_items,
                                            (uchar *) &arg);
       *tab->on_expr_ref= item;
@@ -141,7 +141,7 @@ void substitute_base_with_nest_items(JOIN *join)
   Item *conds= join->conds;
   if (conds)
   {
-    conds= conds->transform(join->thd, &Item::replace_with_nest_items,
+    conds= conds->transform(thd, &Item::replace_with_nest_items,
                             (uchar *) &arg);
     conds->update_used_tables();
   }
