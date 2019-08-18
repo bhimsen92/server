@@ -235,6 +235,7 @@ void extract_condition_for_the_nest(JOIN *join)
   {
     if (extracted_cond->fix_fields_if_needed(thd, 0))
       return;
+    extracted_cond->update_used_tables();
     /*
       Remove from the WHERE clause all the conditions that were added
       to the inner tables of the sort nest

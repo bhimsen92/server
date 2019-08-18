@@ -734,27 +734,43 @@ Item* Item_subselect::transform(THD *thd, Item_transformer transformer,
 
   for (SELECT_LEX *lex= unit->first_select(); lex; lex= lex->next_select())
   {
-    List_iterator<Item> li(lex->item_list);
-    Item *item;
+    List_iterator<Item> it(lex->item_list);
+    Item *item, *new_item;
     ORDER *order;
 
     if (lex->where)
     {
-      item= (lex->where)->transform(thd, transformer, arg);
-      if (item && item != lex->where)
-        thd->change_item_tree(&lex->where, item);
+      lex->where= (lex->where)->transform(thd, transformer, arg);
+      lex->where->update_used_tables();
     }
     if (lex->having)
+    {
       lex->having= (lex->having)->transform(thd, transformer, arg);
+      lex->having->update_used_tables();
+    }
 
-    while ((item=li++))
-      item= item->transform(thd, transformer, arg);
+    while ((item=it++))
+    {
+      if ((new_item= item->transform(thd, transformer, arg)) != item)
+      {
+        new_item->name= item->name;
+        thd->change_item_tree(it.ref(), new_item);
+        it.replace(new_item);
+      }
+      new_item->update_used_tables();
+    }
 
     for (order= lex->order_list.first ; order; order= order->next)
+    {
       *order->item= (*order->item)->transform(thd, transformer, arg);
+      (*order->item)->update_used_tables();
+    }
 
     for (order= lex->group_list.first ; order; order= order->next)
+    {
       *order->item= (*order->item)->transform(thd, transformer, arg);
+      (*order->item)->update_used_tables();
+    }
   }
 
   return (this->*transformer)(thd, arg);
