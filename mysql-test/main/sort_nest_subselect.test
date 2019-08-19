@@ -31,5 +31,15 @@ eval EXPLAIN $query;
 eval EXPLAIN FORMAT=JSON $query;
 eval $query;
 
+--echo # same as above but exists to in transformation not allowed
+--echo # subquery is attached to table t3 which is outside the sort-nest
+
+set optimizer_switch='exists_to_in=off';
+eval EXPLAIN $query;
+eval EXPLAIN FORMAT=JSON $query;
+eval $query;
+
+set optimizer_switch=default;
+
 drop table t0,t1,t2,t3,t4;
 
