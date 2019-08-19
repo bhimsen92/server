@@ -82,7 +82,6 @@ void substitute_base_with_nest_items(JOIN *join)
     {
       new_item->name= item->name;
       thd->change_item_tree(it.ref(), new_item);
-      it.replace(new_item);
     }
     new_item->update_used_tables();
   }
@@ -90,10 +89,10 @@ void substitute_base_with_nest_items(JOIN *join)
   ORDER *ord;
   for (ord= join->order; ord ; ord=ord->next)
   {
-    item= ord->item[0];
-    item= item->transform(thd, &Item::replace_with_nest_items, (uchar *)&arg);
-    item->update_used_tables();
-    ord->item[0]= item;
+    (*ord->item)= (*ord->item)->transform(thd,
+                                          &Item::replace_with_nest_items,
+                                          (uchar *) &arg);
+    (*ord->item)->update_used_tables();
   }
 
   JOIN_TAB *end_tab= sort_nest_info->nest_tab;
@@ -524,7 +523,7 @@ bool setup_sort_nest(JOIN *join)
     }
   }
 
-  ORDER *order= join->order;
+  ORDER *order;
   /*
     Substitute the ORDER by items with the best field so that equality
     propagation considered during best_access_path can be used.

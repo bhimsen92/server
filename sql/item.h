@@ -6519,7 +6519,7 @@ public:
       if (new_item != example)
         setup(thd, new_item);
     }
-    return (this->*transformer)(thd, arg);
+    return this;
   }
   virtual Item *safe_charset_converter(THD *thd, CHARSET_INFO *tocs);
   void split_sum_func2_example(THD *thd,  Ref_ptr_array ref_pointer_array,

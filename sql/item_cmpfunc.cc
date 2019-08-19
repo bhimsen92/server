@@ -1700,6 +1700,9 @@ Item *Item_in_optimizer::transform(THD *thd, Item_transformer transformer,
   if ((*args) != new_item)
     thd->change_item_tree(args, new_item);
 
+  /* needs to transform the cached item */
+  cache->setup(thd, args[0]);
+
   if (invisible_mode())
   {
     /* MAX/MIN transformed => pass through */
@@ -1726,14 +1729,12 @@ Item *Item_in_optimizer::transform(THD *thd, Item_transformer transformer,
                  ((Item_subselect*)(args[1]))->substype() ==
                  Item_subselect::ANY_SUBS));
 
-    new_item= args[1]->transform(thd, transformer, argument);
-    if (!new_item)
-      return 0;
-    if (args[1] != new_item)
-      thd->change_item_tree(args + 1, new_item);
-
     Item_in_subselect *in_arg= (Item_in_subselect*)args[1];
     thd->change_item_tree(&in_arg->left_expr, args[0]);
+
+    new_item= args[1]->transform(thd, transformer, argument);
+    if (args[1] != new_item)
+      thd->change_item_tree(args + 1, new_item);
   }
   return (this->*transformer)(thd, argument);
 }
