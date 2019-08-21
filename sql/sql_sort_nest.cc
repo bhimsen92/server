@@ -416,7 +416,7 @@ bool create_sort_nest_if_needed(JOIN *join)
 {
   uint tablenr, n_tables=0;
   uint table_count= join->table_count;
-  for (tablenr=0 ; tablenr < table_count ; tablenr++)
+  for (tablenr=join->const_tables ; tablenr < table_count ; tablenr++)
   {
     POSITION *pos= &join->best_positions[tablenr];
     n_tables++;
