@@ -7690,12 +7690,40 @@ best_access_path(JOIN      *join,
           DBUG_ASSERT(tmp >= 0);
         }
       }
+
+      /*
+        Cost for sorting is added for the cases when ref access does
+        not satisfy the ORDER BY clause
+        An example would be
+        query
+        select * from t1 where t1.a=5 and c=2 order by b;
+
+        we have 2 keys idx1(a,b) and idx2(a,c)
+        so cost of sorting needs to be added for idx2 and not for idx1
+      */
+      if (join->sort_nest_possible)
+      {
+        tmp += (!idx &&
+                !s->table->keys_in_use_for_order_by.is_clear_all() &&
+                !s->table->keys_in_use_for_order_by.is_set(start_key->key)) ?
+                sort_nest_oper_cost(join, records,
+                                    s->get_estimated_record_length(), 0) :
+                0.0;
+      }
+
       trace_access_idx.add("rows", records).add("cost", tmp);
 
       if (tmp + 0.0001 < best_time - records/(double) TIME_FOR_COMPARE)
       {
         trace_access_idx.add("chosen", true);
         best_time= COST_ADD(tmp, records/(double) TIME_FOR_COMPARE);
+        /*
+          best here is assigned the cost of reading the rows via the index
+          and not the cost of  evalutation the part of the where clause
+          satisfied by this ref access. This is done so because we add the
+          cost of evaluating the where clause in
+          best_extension_by_limited_search.
+        */
         best= tmp;
         best_records= records;
         best_key= start_key;
@@ -9368,7 +9396,8 @@ best_extension_by_limited_search(JOIN      *join,
   JOIN_TAB *s;
   double best_record_count= DBL_MAX;
   double best_read_time=    DBL_MAX;
-  bool disable_jbuf= (join->thd->variables.join_cache_level == 0) || nest_created;
+  bool disable_jbuf= (join->thd->variables.join_cache_level == 0) ||
+                      nest_created;
   double fraction_output;
 
   if (nest_created)
