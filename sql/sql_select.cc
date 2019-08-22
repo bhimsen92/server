@@ -124,7 +124,8 @@ static bool best_extension_by_limited_search(JOIN *join,
                                              uint use_cond_selectivity,
                                              table_map previous_tables,
                                              bool nest_created,
-                                             double cardinality);
+                                             double cardinality,
+                                             bool limit_applied_to_nest);
 static uint determine_search_depth(JOIN* join);
 C_MODE_START
 static int join_tab_cmp(const void *dummy, const void* ptr1, const void* ptr2);
@@ -8640,9 +8641,14 @@ greedy_search(JOIN      *join,
     This is required by the order by limit optimization to decide where
     to put a nest for a join prefix
   */
-  double cardinality= join->disable_sort_nest ?
-                      DBL_MAX :
-                      join->join_record_count;
+  double cardinality= DBL_MAX;
+  if (!join->disable_sort_nest)
+  {
+    cardinality= join->join_record_count;
+    join->fraction_output_for_nest= join->select_limit < cardinality ?
+                                    (join->select_limit / cardinality) :
+                                     1.0;
+  }
   DBUG_ENTER("greedy_search");
 
   /* number of tables that remain to be optimized */
@@ -8663,7 +8669,8 @@ greedy_search(JOIN      *join,
                                          (join->sort_nest_possible ? 0 :
                                           prune_level),
                                          use_cond_selectivity,
-                                         previous_tables, FALSE, cardinality))
+                                         previous_tables, FALSE, cardinality,
+                                         FALSE))
       DBUG_RETURN(TRUE);
     /*
       'best_read < DBL_MAX' means that optimizer managed to find
@@ -9385,7 +9392,8 @@ best_extension_by_limited_search(JOIN      *join,
                                  uint      use_cond_selectivity,
                                  table_map previous_tables,
                                  bool nest_created,
-                                 double cardinality)
+                                 double cardinality,
+                                 bool limit_applied_to_nest)
 {
   DBUG_ENTER("best_extension_by_limited_search");
 
@@ -9413,16 +9421,13 @@ best_extension_by_limited_search(JOIN      *join,
   double best_read_time=    DBL_MAX;
   bool disable_jbuf= (join->thd->variables.join_cache_level == 0) ||
                       nest_created;
-  double fraction_output;
 
-  if (nest_created)
+  if (nest_created && !limit_applied_to_nest)
   {
-    fraction_output= join->select_limit < cardinality ?
-                     (join->select_limit/cardinality) : 1.0;
-    record_count= COST_MULT(record_count, fraction_output);
+    record_count= COST_MULT(record_count, join->fraction_output_for_nest);
+    set_if_bigger(record_count, 1);
+    limit_applied_to_nest= TRUE;
   }
-  else
-    fraction_output= 1.0;
 
   DBUG_EXECUTE("opt", print_plan(join, idx, record_count, read_time, read_time,
                                 "part_plan"););
@@ -9467,11 +9472,10 @@ best_extension_by_limited_search(JOIN      *join,
         ? position->range_rowid_filter_info->get_cmp_gain(current_record_count)
         : 0;
       current_read_time=COST_ADD(read_time,
-                                 COST_MULT(
                                     COST_ADD(position->read_time -
                                              filter_cmp_gain,
                                              current_record_count /
-                                             (double) TIME_FOR_COMPARE), fraction_output));
+                                             (double) TIME_FOR_COMPARE));
 
       advance_sj_state(join, remaining_tables, idx, &current_record_count,
                        &current_read_time, &loose_scan_pos);
@@ -9550,7 +9554,8 @@ best_extension_by_limited_search(JOIN      *join,
                                              use_cond_selectivity,
                                              nest_created ? previous_tables :
                                              previous_tables | real_table_bit,
-                                             nest_created, cardinality))
+                                             nest_created, cardinality,
+                                             limit_applied_to_nest))
           DBUG_RETURN(TRUE);
         trace_rest.end();
 
@@ -9585,7 +9590,8 @@ best_extension_by_limited_search(JOIN      *join,
                                                0,
                                                use_cond_selectivity,
                                                previous_tables | real_table_bit,
-                                               TRUE, cardinality))
+                                               TRUE, cardinality,
+                                               limit_applied_to_nest))
             DBUG_RETURN(TRUE);
           join->positions[idx].sort_nest_operation_here= FALSE;
           trace_rest.end();

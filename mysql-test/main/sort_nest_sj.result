@@ -26,7 +26,7 @@ LIMIT 5;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	<subquery2>	ALL	distinct_key	NULL	NULL	NULL	3	
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	10	
-1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	30	Using filesort
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	1	Using filesort
 1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	1000	Using where
 2	MATERIALIZED	t4	range	a	a	5	NULL	3	Using where; Using index
 2	MATERIALIZED	t3	ref	a	a	5	test.t4.a	1	
@@ -88,7 +88,7 @@ EXPLAIN
         "table": {
           "table_name": "<sort-nest>",
           "access_type": "ALL",
-          "rows": 30,
+          "rows": 1,
           "filtered": 100
         }
       }
@@ -137,9 +137,9 @@ LIMIT 5;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	range	c	c	5	NULL	3	Using index condition
 1	PRIMARY	ot1	ALL	NULL	NULL	NULL	NULL	100	Using where; Using join buffer (flat, BNL join)
-1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	300	Using filesort
-1	PRIMARY	<subquery2>	eq_ref	distinct_key	distinct_key	4	func	1	
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	5	Using filesort
 1	PRIMARY	t1	ref	a	a	5	sort-nest.b	1	Using index
+1	PRIMARY	<subquery2>	eq_ref	distinct_key	distinct_key	4	func	1	
 2	MATERIALIZED	it	ALL	NULL	NULL	NULL	NULL	1000	
 explain format=json SELECT t1.a as w, t2.b as x, ot1.a as y, ot1.b as z
 FROM t1, t2, t2 ot1
@@ -182,10 +182,22 @@ EXPLAIN
         "table": {
           "table_name": "<sort-nest>",
           "access_type": "ALL",
-          "rows": 300,
+          "rows": 5,
           "filtered": 100
         }
       }
+    },
+    "table": {
+      "table_name": "t1",
+      "access_type": "ref",
+      "possible_keys": ["a"],
+      "key": "a",
+      "key_length": "5",
+      "used_key_parts": ["a"],
+      "ref": ["sort-nest.b"],
+      "rows": 1,
+      "filtered": 100,
+      "using_index": true
     },
     "table": {
       "table_name": "<subquery2>",
@@ -209,18 +221,6 @@ EXPLAIN
           }
         }
       }
-    },
-    "table": {
-      "table_name": "t1",
-      "access_type": "ref",
-      "possible_keys": ["a"],
-      "key": "a",
-      "key_length": "5",
-      "used_key_parts": ["a"],
-      "ref": ["sort-nest.b"],
-      "rows": 1,
-      "filtered": 100,
-      "using_index": true
     }
   }
 }
@@ -253,7 +253,7 @@ t1.b in (select b from t3 where t3.c<=t2.c) order by t2.c desc, t1.c desc limit 
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	10	Using where
 1	PRIMARY	t1	ref	a	a	5	test.t2.a	1	
-1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	10	Using filesort
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	5	Using filesort
 1	PRIMARY	t3	ALL	NULL	NULL	NULL	NULL	10	Using where; FirstMatch(<sort-nest>)
 explain format=json select * from t1, t2 where t1.a=t2.a and
 t1.b in (select b from t3 where t3.c<=t2.c) order by t2.c desc, t1.c desc limit 5;
@@ -285,7 +285,7 @@ EXPLAIN
         "table": {
           "table_name": "<sort-nest>",
           "access_type": "ALL",
-          "rows": 10,
+          "rows": 5,
           "filtered": 100
         }
       }
@@ -317,7 +317,7 @@ t1.b in (select b from t3 where t3.c<=t2.c) order by t2.c desc, t1.c desc limit 
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	10	Using where
 1	PRIMARY	t1	ref	a	a	5	test.t2.a	1	
-1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	10	Using filesort
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	5	Using filesort
 1	PRIMARY	t3	ALL	NULL	NULL	NULL	NULL	10	Using where; Start temporary; End temporary
 explain format=json select * from t1, t2 where t1.a=t2.a and
 t1.b in (select b from t3 where t3.c<=t2.c) order by t2.c desc, t1.c desc limit 5;
@@ -349,7 +349,7 @@ EXPLAIN
         "table": {
           "table_name": "<sort-nest>",
           "access_type": "ALL",
-          "rows": 10,
+          "rows": 5,
           "filtered": 100
         }
       }
@@ -395,7 +395,7 @@ LIMIT 5;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	5	
 1	PRIMARY	t1	ALL	NULL	NULL	NULL	NULL	5	Using where; Using join buffer (flat, BNL join)
-1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	25	Using filesort
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	5	Using filesort
 1	PRIMARY	<subquery2>	eq_ref	distinct_key	distinct_key	4	sort-nest.a	1	
 2	MATERIALIZED	t3	ALL	NULL	NULL	NULL	NULL	100	Using temporary
 EXPLAIN FORMAT=JSON SELECT * from t2,t1
@@ -432,7 +432,7 @@ EXPLAIN
         "table": {
           "table_name": "<sort-nest>",
           "access_type": "ALL",
-          "rows": 25,
+          "rows": 5,
           "filtered": 100
         }
       }
@@ -485,7 +485,7 @@ LIMIT 5;
 id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
 1	PRIMARY	t2	ALL	NULL	NULL	NULL	NULL	5	
 1	PRIMARY	<subquery2>	ALL	distinct_key	NULL	NULL	NULL	5	Using join buffer (flat, BNL join)
-1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	25	Using filesort
+1	PRIMARY	<sort-nest>	ALL	NULL	NULL	NULL	NULL	1	Using filesort
 1	PRIMARY	t3	ALL	NULL	NULL	NULL	NULL	100	Using where
 2	MATERIALIZED	t1	ALL	NULL	NULL	NULL	NULL	5	Using temporary
 EXPLAIN FORMAT=JSON SELECT * FROM t3,t2
@@ -535,7 +535,7 @@ EXPLAIN
         "table": {
           "table_name": "<sort-nest>",
           "access_type": "ALL",
-          "rows": 25,
+          "rows": 1,
           "filtered": 100
         }
       }

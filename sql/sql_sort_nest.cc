@@ -644,6 +644,9 @@ double calculate_record_count_for_sort_nest(JOIN *join, uint n_tables)
     record_count= tab->records_read * tab->cond_selectivity;
     sort_nest_records= COST_MULT(sort_nest_records, record_count);
   }
+  sort_nest_records= COST_MULT(sort_nest_records,
+                               join->fraction_output_for_nest);
+  set_if_bigger(sort_nest_records, 1);
   return sort_nest_records;
 }
 

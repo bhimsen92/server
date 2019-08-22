@@ -1533,6 +1533,11 @@ public:
     optimizer once to get the output cardinality for the join.
   */
   bool disable_sort_nest;
+  /*
+    This is need for the sort-nest to adjust the number of records that would
+    actual be read for the nest.
+  */
+  double fraction_output_for_nest;
 
   JOIN(THD *thd_arg, List<Item> &fields_arg, ulonglong select_options_arg,
        select_result *result_arg)
@@ -1632,6 +1637,7 @@ public:
     sort_nest_info= NULL;
     sort_nest_possible= FALSE;
     disable_sort_nest= FALSE;
+    fraction_output_for_nest= 1;
   }
 
   /* True if the plan guarantees that it will be returned zero or one row */
