@@ -1809,13 +1809,13 @@ public:
 
   bool sort_nest_allowed()
   {
-    return !((const_tables != table_count &&
-            ((select_distinct || group_list) || having  ||
-             MY_TEST(select_options & OPTION_BUFFER_RESULT))) ||
-            (rollup.state != ROLLUP::STATE_NONE && select_distinct) ||
-            select_lex->window_specs.elements > 0 ||
-            select_lex->agg_func_used() ||
-            thd->lex->sql_command != SQLCOM_SELECT);
+    return !(const_tables == table_count ||
+             (select_distinct || group_list) || having  ||
+             MY_TEST(select_options & OPTION_BUFFER_RESULT) ||
+             (rollup.state != ROLLUP::STATE_NONE && select_distinct) ||
+             select_lex->window_specs.elements > 0 ||
+             select_lex->agg_func_used() ||
+             thd->lex->sql_command != SQLCOM_SELECT);
   }
   bool check_if_order_by_expensive();
   bool choose_subquery_plan(table_map join_tables);

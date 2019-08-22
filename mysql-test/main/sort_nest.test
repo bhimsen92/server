@@ -403,6 +403,24 @@ LEFT JOIN t3 ON t2.i2 = t3.i3
 ORDER BY t1.i1 LIMIT 5;
 drop table t1,t2,t3;
 
+--echo # All tables are const tables
+
+create table t1 (a int, b int);
+insert into t1 values (0,0);
+create table t2(a int, b int);
+insert into t2 values (0,0);
+create table t3(a int, b int);
+insert into t3 values (0,0);
+
+let $query= SELECT t1.a,t2.a,t3.a FROM t1,t2,t3
+            WHERE t1.b = t2.b and t3.b=t1.b
+            ORDER BY t2.a desc,t1.a desc limit 5;
+
+eval EXPLAIN extended $query;
+eval $query;
+
+drop table t1,t2,t3;
+
 --echo #
 --echo # Tests where Index(scan, ref or range access) satisfies the ORDERING
 --echo #
