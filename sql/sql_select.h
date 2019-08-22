@@ -1527,6 +1527,12 @@ public:
   bool is_orig_degenerated;
   SORT_NEST_INFO *sort_nest_info;
   bool sort_nest_possible;
+  /*
+    Set to true if we don't want the planner to pick a plan with the sort
+    nest. This is currently used for the case when we run the join
+    optimizer once to get the output cardinality for the join.
+  */
+  bool disable_sort_nest;
 
   JOIN(THD *thd_arg, List<Item> &fields_arg, ulonglong select_options_arg,
        select_result *result_arg)
@@ -1625,6 +1631,7 @@ public:
     is_orig_degenerated= false;
     sort_nest_info= NULL;
     sort_nest_possible= FALSE;
+    disable_sort_nest= FALSE;
   }
 
   /* True if the plan guarantees that it will be returned zero or one row */

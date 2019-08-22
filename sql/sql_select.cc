@@ -124,7 +124,7 @@ static bool best_extension_by_limited_search(JOIN *join,
                                              uint use_cond_selectivity,
                                              table_map previous_tables,
                                              bool nest_created,
-                                             double *cardinality);
+                                             double cardinality);
 static uint determine_search_depth(JOIN* join);
 C_MODE_START
 static int join_tab_cmp(const void *dummy, const void* ptr1, const void* ptr2);
@@ -5481,6 +5481,17 @@ make_join_statistics(JOIN *join, List<TABLE_LIST> &tables_list,
   if (optimize_semijoin_nests(join, all_table_map))
     DBUG_RETURN(TRUE); /* purecov: inspected */
 
+  if (join->sort_nest_allowed() && !join->check_if_order_by_expensive())
+  {
+    DBUG_ASSERT(!join->sort_nest_possible);
+    Json_writer_temp_disable trace_order_by_limit(join->thd);
+    join->sort_nest_possible= TRUE;
+    join->disable_sort_nest= TRUE;
+    if (choose_plan(join, all_table_map & ~join->const_table_map))
+        goto error;
+    join->disable_sort_nest= FALSE;
+  }
+
   {
     double records= 1;
     SELECT_LEX_UNIT *unit= join->select_lex->master_unit();
@@ -8624,7 +8635,14 @@ greedy_search(JOIN      *join,
   JOIN_TAB  *best_table; // the next plan node to be added to the curr QEP
   // ==join->tables or # tables in the sj-mat nest we're optimizing
   uint      n_tables __attribute__((unused));
-  double cardinality= DBL_MAX;
+
+  /*
+    This is required by the order by limit optimization to decide where
+    to put a nest for a join prefix
+  */
+  double cardinality= join->disable_sort_nest ?
+                      DBL_MAX :
+                      join->join_record_count;
   DBUG_ENTER("greedy_search");
 
   /* number of tables that remain to be optimized */
@@ -8634,9 +8652,6 @@ greedy_search(JOIN      *join,
                                           ~join->const_table_map)
                                          :
                                          ~(table_map)0));
-
-  join->sort_nest_possible= (join->sort_nest_allowed() &&
-                             !join->check_if_order_by_expensive());
 
   do {
     /* Find the extension of the current QEP with the lowest cost */
@@ -8648,7 +8663,7 @@ greedy_search(JOIN      *join,
                                          (join->sort_nest_possible ? 0 :
                                           prune_level),
                                          use_cond_selectivity,
-                                         previous_tables, FALSE, &cardinality))
+                                         previous_tables, FALSE, cardinality))
       DBUG_RETURN(TRUE);
     /*
       'best_read < DBL_MAX' means that optimizer managed to find
@@ -9370,7 +9385,7 @@ best_extension_by_limited_search(JOIN      *join,
                                  uint      use_cond_selectivity,
                                  table_map previous_tables,
                                  bool nest_created,
-                                 double *cardinality)
+                                 double cardinality)
 {
   DBUG_ENTER("best_extension_by_limited_search");
 
@@ -9402,8 +9417,8 @@ best_extension_by_limited_search(JOIN      *join,
 
   if (nest_created)
   {
-    fraction_output= join->select_limit < (*cardinality) ?
-                     (join->select_limit/(*cardinality)) : 1.0;
+    fraction_output= join->select_limit < cardinality ?
+                     (join->select_limit/cardinality) : 1.0;
     record_count= COST_MULT(record_count, fraction_output);
   }
   else
@@ -9539,8 +9554,15 @@ best_extension_by_limited_search(JOIN      *join,
           DBUG_RETURN(TRUE);
         trace_rest.end();
 
+        /*
+          Do we really need to disable sort_nest when we are picking
+          the plan for a semi-join.
+          TODO(varun) get an optimizer switch to enable or disable the sort
+          nest
+        */
         if (!nest_created && !join->emb_sjm_nest && join->order &&
             nest_allow && join->sort_nest_possible &&
+            !join->disable_sort_nest &&
             check_join_prefix_contains_ordering(join, s, previous_tables))
         {
           join->positions[idx].sort_nest_operation_here= TRUE;
@@ -9594,10 +9616,8 @@ best_extension_by_limited_search(JOIN      *join,
           current_read_time= COST_ADD(current_read_time, cost);
         }
         if (!nest_created)
-        {
-          *cardinality= partial_join_cardinality;
           trace_one_table.add("cardinality", partial_join_cardinality);
-        }
+
         trace_one_table.add("cost_of_plan", current_read_time);
         if (current_read_time < join->best_read)
         {
