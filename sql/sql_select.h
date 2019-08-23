@@ -1807,22 +1807,23 @@ public:
     the sort nest, so we disable the usage of sort nest for such operations.
 
     Sort nest is not allowed for
-    1) Only constant tables in the join
-    2) DISTINCT clause
-    3) GROUP BY CLAUSE
-    4) HAVING clause (that was not pushed to where)
-    5) Aggregate Functions
-    6) Window Functions
-    7) Using Rollup
-    8) Using SQL_BUFFER_RESULT
-    9) Only Select queries can use the sort nest
+    1) ORDER clause is not present
+    2) Only constant tables in the join
+    3) DISTINCT clause
+    4) GROUP BY CLAUSE
+    5) HAVING clause (that was not pushed to where)
+    6) Aggregate Functions
+    7) Window Functions
+    8) Using Rollup
+    9) Using SQL_BUFFER_RESULT
+    10) Only Select queries can use the sort nest
 
     Returns TRUE if sort-nest is allowed
   */
 
   bool sort_nest_allowed()
   {
-    return !(const_tables == table_count ||
+    return !(const_tables == table_count || !order ||
              (select_distinct || group_list) || having  ||
              MY_TEST(select_options & OPTION_BUFFER_RESULT) ||
              (rollup.state != ROLLUP::STATE_NONE && select_distinct) ||
