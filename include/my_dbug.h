@@ -35,7 +35,7 @@ struct _db_stack_frame_ {
 };
 
 struct  _db_code_state_;
-extern  my_bool _dbug_on_;
+extern  my_bool _dbug_on_, _dbug_suicide_done_;
 extern  my_bool _db_keyword_(struct _db_code_state_ *, const char *, int);
 extern  int _db_explain_(struct _db_code_state_ *cs, char *buf, size_t len);
 extern  int _db_explain_init_(char *buf, size_t len);
@@ -81,7 +81,7 @@ extern int (*dbug_sanity)(void);
         _db_enter_ (a,__FILE__,__LINE__,&_db_stack_frame_)
 #define DBUG_RETURN(a1) do {DBUG_LEAVE; return(a1);} while(0)
 #define DBUG_VOID_RETURN do {DBUG_LEAVE; return;} while(0)
-#endif
+#endif /* HAVE_ATTRIBUTE_CLEANUP */
 
 #define DBUG_EXECUTE(keyword,a1) \
         do {if (_db_keyword_(0, (keyword), 0)) { a1 }} while(0)
@@ -114,6 +114,7 @@ extern int (*dbug_sanity)(void);
 #define IF_DBUG_ASSERT(A,B)             A
 #define DBUG_SWAP_CODE_STATE(arg) dbug_swap_code_state(arg)
 #define DBUG_FREE_CODE_STATE(arg) dbug_free_code_state(arg)
+#define DBUG_SUICIDE_DONE _dbug_suicide_done_
 #undef DBUG_ASSERT_AS_PRINTF
 
 #ifndef __WIN__
@@ -128,7 +129,7 @@ extern int (*dbug_sanity)(void);
                      (void)_CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE),\
                      (void)_CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR),\
                      _exit(3))
-#endif
+#endif /* __WIN__ */
 
 /*
   Make the program fail, without creating a core file.
@@ -180,6 +181,7 @@ extern void _db_suicide_(void);
 #define DBUG_CRASH_RETURN(val)          do { return(val); } while(0)
 #define DBUG_CRASH_VOID_RETURN          do { return; } while(0)
 #define DBUG_SUICIDE()                  do { } while(0)
+#define DBUG_SUICIDE_DONE               0
 
 #ifdef DBUG_ASSERT_AS_PRINTF
 extern void (*my_dbug_assert_failed)(const char *assert_expr, const char* file, unsigned long line);
@@ -209,10 +211,11 @@ void debug_sync_point(const char* lock_name, uint lock_timeout);
 
 #ifdef __cplusplus
 }
+
 /*
   DBUG_LOG() was initially intended for InnoDB. To be able to use it elsewhere
-  one should #include <sstream>. We intentionally avoid including it here to save
-  compilation time.
+  one should #include <sstream>. We intentionally avoid including it here to
+  save compilation time.
 */
 # ifdef DBUG_OFF
 #  define DBUG_LOG(keyword, v) do {} while (0)
@@ -222,7 +225,7 @@ void debug_sync_point(const char* lock_name, uint lock_timeout);
     std::ostringstream _db_s; _db_s << v; \
     _db_doprnt_("%s", _db_s.str().c_str()); \
   }} while (0)
-# endif
-#endif
+#endif /* DBUG_OFF */
+#endif /* __cplusplus */
 
 #endif /* _my_dbug_h */

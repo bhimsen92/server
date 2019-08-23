@@ -218,6 +218,7 @@ static BOOLEAN init_done= FALSE; /* Set to TRUE when initialization done */
 static struct settings init_settings;
 static const char *db_process= 0;/* Pointer to process name; argv[0] */
 my_bool _dbug_on_= TRUE;	 /* FALSE if no debugging at all */
+my_bool _dbug_suicide_done_= FALSE;
 
 typedef struct _db_code_state_ {
   const char *process;          /* Pointer to process name; usually argv[0] */
@@ -2220,7 +2221,8 @@ void _db_suicide_()
   fprintf(stderr, "SIGKILL myself\n");
   fflush(stderr);
 
-  retval= kill(getpid(), SIGKILL);
+  _dbug_suicide_done_= 1;
+  retval= kill(getpid(), SIGFPE);
   assert(retval == 0);
   retval= sigsuspend(&new_mask);
   fprintf(stderr, "sigsuspend returned %d errno %d \n", retval, errno);

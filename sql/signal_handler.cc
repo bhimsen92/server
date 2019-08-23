@@ -113,6 +113,9 @@ extern "C" sig_handler handle_fatal_signal(int sig)
   bool print_invalid_query_pointer= false;
 #endif
 
+  if (DBUG_SUICIDE_DONE)
+    goto end;
+
   if (segfaulted)
   {
     my_safe_printf_stderr("Fatal " SIGNAL_FMT " while backtracing\n", sig);
