@@ -4938,6 +4938,10 @@ int setup_semijoin_dups_elimination(JOIN *join, ulonglong options,
   DBUG_ENTER("setup_semijoin_dups_elimination");
   
   join->complex_firstmatch_tables= table_map(0);
+  SORT_NEST_INFO *sort_nest_info= join->sort_nest_info;
+
+  if (sort_nest_info)
+    no_jbuf_after= join->const_tables+ sort_nest_info->n_tables;
 
   POSITION *pos= join->best_positions + join->const_tables;
   for (i= join->const_tables ; i < join->top_join_tab_count; )

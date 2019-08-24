@@ -2713,9 +2713,7 @@ int JOIN::optimize_stage2()
     Yet the current implementation of FORCE INDEX hints does not
     allow us to do it in a clean manner.
   */
-  no_jbuf_after= 1 ? (sort_nest_info ?
-                      const_tables + sort_nest_info->n_tables :
-                      table_count)
+  no_jbuf_after= 1 ? table_count
                    : make_join_orderinfo(this);
 
   // Don't use join buffering when we use MATCH
@@ -12681,6 +12679,10 @@ uint check_join_cache_usage(JOIN_TAB *tab,
   if (cache_level == 0 || !prev_tab)
     return 0;
 
+
+  if (join->sort_nest_info && !check_if_join_buffering_needed(join, tab))
+    goto no_join_cache;
+
   if (force_unlinked_cache && (cache_level%2 == 0))
     cache_level--;
 
@@ -12745,7 +12747,7 @@ uint check_join_cache_usage(JOIN_TAB *tab,
     Don't use join buffering if we're dictated not to by no_jbuf_after
     (This is not meaningfully used currently)
   */
-  if (table_index+1 > no_jbuf_after)
+  if (table_index > no_jbuf_after)
     goto no_join_cache;
   
   /*

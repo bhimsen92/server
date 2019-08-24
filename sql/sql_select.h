@@ -2202,6 +2202,7 @@ void check_cond_extraction_for_nest(THD *thd, Item *cond,
 int get_best_index_for_order_by_limit(JOIN_TAB *tab, double *read_time,
                                       double *records, double cardinality,
                                       int index_used, uint idx);
+bool check_if_join_buffering_needed(JOIN *join, JOIN_TAB *tab);
 
 /*
   General routine to change field->ptr of a NULL-terminated array of Field

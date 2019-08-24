@@ -804,3 +804,22 @@ int get_best_index_for_order_by_limit(JOIN_TAB *tab, double *read_time,
   return best_index;
 }
 
+
+/*
+  @brief
+   Disable join buffering for all the tables that come after the inner
+   table of the sort-nest. This is done because join-buffering does not
+   ensure ordering.
+*/
+
+bool check_if_join_buffering_needed(JOIN *join, JOIN_TAB *tab)
+{
+  JOIN_TAB *end= join->join_tab+join->top_join_tab_count;
+  JOIN_TAB *start= join->sort_nest_info->nest_tab;
+  for (JOIN_TAB *j= start; j < end; j++)
+  {
+    if (j == tab)
+      return FALSE;
+  }
+  return TRUE;
+}
