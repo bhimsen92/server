@@ -9585,27 +9585,12 @@ best_extension_by_limited_search(JOIN      *join,
       {
         /* Recursively expand the current partial plan */
         swap_variables(JOIN_TAB*, join->best_ref[idx], *pos);
-        Json_writer_array trace_rest(thd, "rest_of_plan");
         bool nest_allow= (join->cur_sj_inner_tables == 0 &&
                           join->cur_embedding_map == 0);
         if (!idx && join->sort_nest_allowed() &&
             (index_used >=0 && index_used < MAX_KEY) &&
             s->table->keys_in_use_for_order_by.is_set(index_used))
           limit_applied_to_nest= TRUE;
-        if (best_extension_by_limited_search(join,
-                                             remaining_tables & ~real_table_bit,
-                                             idx + 1,
-                                             partial_join_cardinality,
-                                             current_read_time,
-                                             search_depth - 1,
-                                             prune_level,
-                                             use_cond_selectivity,
-                                             nest_created ? previous_tables :
-                                             previous_tables | real_table_bit,
-                                             nest_created, cardinality,
-                                             limit_applied_to_nest))
-          DBUG_RETURN(TRUE);
-        trace_rest.end();
 
         /*
           Do we really need to disable sort_nest when we are picking
@@ -9643,6 +9628,22 @@ best_extension_by_limited_search(JOIN      *join,
           join->positions[idx].sort_nest_operation_here= FALSE;
           trace_rest.end();
         }
+        Json_writer_array trace_rest(thd, "rest_of_plan");
+        if (best_extension_by_limited_search(join,
+                                             remaining_tables & ~real_table_bit,
+                                             idx + 1,
+                                             partial_join_cardinality,
+                                             current_read_time,
+                                             search_depth - 1,
+                                             prune_level,
+                                             use_cond_selectivity,
+                                             nest_created ? previous_tables :
+                                             previous_tables | real_table_bit,
+                                             nest_created, cardinality,
+                                             limit_applied_to_nest))
+          DBUG_RETURN(TRUE);
+        trace_rest.end();
+
         if (!idx)
           limit_applied_to_nest= FALSE;
         swap_variables(JOIN_TAB*, join->best_ref[idx], *pos);
