@@ -111,7 +111,7 @@ void best_access_path(JOIN *join, JOIN_TAB *s,
                       table_map remaining_tables, uint idx,
                       bool disable_jbuf, double record_count,
                       POSITION *pos, POSITION *loose_scan_pos,
-                      int *index_used);
+                      int *index_used, double cardinality);
 static void optimize_straight_join(JOIN *join, table_map join_tables);
 static bool greedy_search(JOIN *join, table_map remaining_tables,
                           uint depth, uint prune_level,
@@ -7200,6 +7200,10 @@ double matching_candidates_in_table(JOIN_TAB *s, bool with_found_constraint,
   @param index_used       OUT returns the index number that was used to access
                               the table in s
                               -1 if no index is used
+  @param cardinality      contains the estimate of records for the best
+                          join order (if the join optimizer is run once
+                          to get the best cardinality else it is set to
+                          DBL_MAX)
   @return
     None
 */
@@ -7213,7 +7217,7 @@ best_access_path(JOIN      *join,
                  double    record_count,
                  POSITION *pos,
                  POSITION *loose_scan_pos,
-                 int *index_used)
+                 int *index_used, double cardinality)
 {
   THD *thd= join->thd;
   uint use_cond_selectivity= thd->variables.optimizer_use_condition_selectivity;
@@ -8504,7 +8508,7 @@ optimize_straight_join(JOIN *join, table_map join_tables)
     }
     /* Find the best access method from 's' to the current partial plan */
     best_access_path(join, s, join_tables, idx, disable_jbuf, record_count,
-                     position, &loose_scan_pos, &index_used);
+                     position, &loose_scan_pos, &index_used, DBL_MAX);
 
     /* compute the cost of the new plan extended with 's' */
     record_count= COST_MULT(record_count, position->records_read);
@@ -9464,7 +9468,8 @@ best_extension_by_limited_search(JOIN      *join,
       /* Find the best access method from 's' to the current partial plan */
       POSITION loose_scan_pos;
       best_access_path(join, s, remaining_tables, idx, disable_jbuf,
-                       record_count, position, &loose_scan_pos, &index_used);
+                       record_count, position, &loose_scan_pos,
+                       &index_used, cardinality);
 
       /* Compute the cost of extending the plan with 's' */
       current_record_count= COST_MULT(record_count, position->records_read);
@@ -16927,7 +16932,7 @@ void optimize_wo_join_buffering(JOIN *join, uint first_tab, uint last_tab,
       /* Find the best access method that would not use join buffering */
       best_access_path(join, rs, reopt_remaining_tables, i, 
                        TRUE, rec_count,
-                       &pos, &loose_scan_pos, &index_used);
+                       &pos, &loose_scan_pos, &index_used, DBL_MAX);
     }
     else 
       pos= join->positions[i];

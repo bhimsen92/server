@@ -457,7 +457,7 @@ void best_access_path(JOIN *join, JOIN_TAB *s,
                              table_map remaining_tables, uint idx, 
                              bool disable_jbuf, double record_count,
                              POSITION *pos, POSITION *loose_scan_pos,
-                             int *index_used);
+                             int *index_used, double cardinality);
 
 static Item *create_subq_in_equalities(THD *thd, SJ_MATERIALIZATION_INFO *sjm, 
                                 Item_in_subselect *subq_pred);
@@ -3080,7 +3080,8 @@ bool Sj_materialization_picker::check_qep(JOIN *join,
     for (i= first_tab + mat_info->tables; i <= idx; i++)
     {
       best_access_path(join, join->positions[i].table, rem_tables, i,
-                       disable_jbuf, prefix_rec_count, &curpos, &dummy, &index_used);
+                       disable_jbuf, prefix_rec_count, &curpos, &dummy,
+                       &index_used, DBL_MAX);
       prefix_rec_count= COST_MULT(prefix_rec_count, curpos.records_read);
       prefix_cost= COST_ADD(prefix_cost, curpos.read_time);
     }
@@ -3728,7 +3729,8 @@ void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
         save_sort_nest_op= join->best_positions[i].sort_nest_operation_here;
         best_access_path(join, join->best_positions[i].table, rem_tables, i, 
                          FALSE, prefix_rec_count,
-                         join->best_positions + i, &dummy, &index_used);
+                         join->best_positions + i, &dummy, &index_used,
+                         DBL_MAX);
         join->best_positions[i].sort_nest_operation_here= save_sort_nest_op;
         prefix_rec_count *= join->best_positions[i].records_read;
         rem_tables &= ~join->best_positions[i].table->table->map;
@@ -3771,7 +3773,7 @@ void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
            best_access_path(join, join->best_positions[idx].table, 
                             rem_tables, idx, TRUE /* no jbuf */,
                             record_count, join->best_positions + idx, &dummy,
-                            &index_used);
+                            &index_used, DBL_MAX);
         }
         record_count *= join->best_positions[idx].records_read;
         rem_tables &= ~join->best_positions[idx].table->table->map;
@@ -3811,7 +3813,7 @@ void fix_semijoin_strategies_for_picked_join_order(JOIN *join)
            best_access_path(join, join->best_positions[idx].table,
                             rem_tables, idx, TRUE /* no jbuf */,
                             record_count, join->best_positions + idx,
-                            &loose_scan_pos, &index_used);
+                            &loose_scan_pos, &index_used, DBL_MAX);
            if (idx==first)
            {
              join->best_positions[idx]= loose_scan_pos;
