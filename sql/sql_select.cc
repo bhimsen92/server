@@ -9626,7 +9626,6 @@ best_extension_by_limited_search(JOIN      *join,
             cost= sort_nest_oper_cost(join, partial_join_cardinality,
                                       rec_len, idx);
             current_read_time= COST_ADD(current_read_time, cost);
-            trace_one_table.add("cost_of_sorting", cost);
           }
           Json_writer_array trace_rest(thd, "rest_of_plan");
           if (best_extension_by_limited_search(join,
@@ -9675,13 +9674,8 @@ best_extension_by_limited_search(JOIN      *join,
           else
             cost= current_record_count;
 
-          trace_one_table.add("cost_of_sorting", cost);
           current_read_time= COST_ADD(current_read_time, cost);
         }
-        if (!nest_created)
-          trace_one_table.add("cardinality", partial_join_cardinality);
-
-        trace_one_table.add("cost_of_plan", current_read_time);
         if (current_read_time < join->best_read)
         {
           memcpy((uchar*) join->best_positions, (uchar*) join->positions,
@@ -10579,6 +10573,11 @@ bool JOIN::get_best_combination()
  
   top_join_tab_count= (uint)(join_tab_ranges.head()->end - 
                       join_tab_ranges.head()->start);
+
+/*
+  if (unlikely(thd->trace_started()))
+    print_final_join_order(this);
+*/
 
   update_depend_map(this);
   DBUG_RETURN(0);

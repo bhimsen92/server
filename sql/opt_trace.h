@@ -108,7 +108,7 @@ void add_table_scan_values_to_trace(THD *thd, JOIN_TAB *tab);
 void add_sort_nest_tables_to_trace(JOIN *join);
 void trace_sort_nest(JOIN *join, uint idx, table_map remaining_tables);
 void trace_plan_prefix(JOIN *join, uint idx, table_map remaining_tables);
-
+//void print_final_join_order(JOIN *join);
 
 /*
   Security related (need to add a proper comment here)

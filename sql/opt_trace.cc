@@ -697,6 +697,19 @@ void trace_plan_prefix(JOIN *join, uint idx, table_map remaining_tables)
 
 
 /*
+void print_final_join_order(JOIN *join)
+{
+  Json_writer_object join_order(join->thd);
+  Json_writer_array  best_order(join->thd, "best_join_order");
+  JOIN_TAB *j;
+  uint i;
+  for (j= join->join_tab,i=0 ; i < join->top_join_tab_count;
+       i++, j++)
+    best_order.add_table_name(j);
+}
+*/
+
+/*
   Introduce enum_query_type flags parameter, maybe also allow
   EXPLAIN also use this function.
 */
