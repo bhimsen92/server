@@ -9590,7 +9590,8 @@ best_extension_by_limited_search(JOIN      *join,
         Json_writer_array trace_rest(thd, "rest_of_plan");
         bool nest_allow= (join->cur_sj_inner_tables == 0 &&
                           join->cur_embedding_map == 0);
-        if (!idx && (index_used >=0 && index_used < MAX_KEY) &&
+        if (!idx && join->sort_nest_allowed() &&
+            (index_used >=0 && index_used < MAX_KEY) &&
             s->table->keys_in_use_for_order_by.is_set(index_used))
           limit_applied_to_nest= TRUE;
         if (best_extension_by_limited_search(join,
@@ -9659,16 +9660,23 @@ best_extension_by_limited_search(JOIN      *join,
             ((join->sort_by_table &&
               join->sort_by_table !=
               join->positions[join->const_tables].table->table) ||
-              (join->order && join->sort_nest_allowed())))
+              join->sort_nest_allowed()))
         {
           /*
              We may have to make a temp table, note that this is only a
              heuristic since we cannot know for sure at this point.
              Hence it may be wrong.
           */
-          ulong rec_len= cache_record_length_for_nest(join, idx);
-          double cost= sort_nest_oper_cost(join, partial_join_cardinality,
-                                           rec_len, idx);
+          double cost;
+          if (join->sort_nest_allowed())
+          {
+            ulong rec_len= cache_record_length_for_nest(join, idx);
+            cost= sort_nest_oper_cost(join, partial_join_cardinality,
+                                      rec_len, idx);
+          }
+          else
+            cost= current_record_count;
+
           trace_one_table.add("cost_of_sorting", cost);
           current_read_time= COST_ADD(current_read_time, cost);
         }
@@ -10395,7 +10403,7 @@ bool JOIN::get_best_combination()
   full_join=0;
   hash_join= FALSE;
 
-  uint index_no= best_positions[const_tables].index_no;
+  int index_no= best_positions[const_tables].index_no;
 
   fix_semijoin_strategies_for_picked_join_order(this);
 
