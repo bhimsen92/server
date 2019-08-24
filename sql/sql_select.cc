@@ -7717,7 +7717,7 @@ best_access_path(JOIN      *join,
         we have 2 keys idx1(a,b) and idx2(a,c)
         so cost of sorting needs to be added for idx2 and not for idx1
       */
-      if (join->sort_nest_possible)
+      if (join->sort_nest_possible && !join->disable_sort_nest)
       {
         tmp += (!idx &&
                 !s->table->keys_in_use_for_order_by.is_clear_all() &&
@@ -8673,8 +8673,8 @@ greedy_search(JOIN      *join,
                                          (join->sort_nest_possible ? 0 :
                                           prune_level),
                                          use_cond_selectivity,
-                                         previous_tables, FALSE, cardinality,
-                                         FALSE))
+                                         previous_tables, FALSE,
+                                         cardinality, FALSE))
       DBUG_RETURN(TRUE);
     /*
       'best_read < DBL_MAX' means that optimizer managed to find
@@ -9378,6 +9378,16 @@ double table_cond_selectivity(JOIN *join, uint idx, JOIN_TAB *s,
                           (values: 0 = EXHAUSTIVE, 1 = PRUNE_BY_TIME_OR_ROWS)
   @param use_cond_selectivity  specifies how the selectivity of the conditions
                           pushed to a table should be taken into account
+  @param nest_created     set to TRUE if a prefix join order satisfied
+                          the ORDER BY clause and we can add a sort-nest
+                          on the found prefix
+  @param cardinality      contains the estimate of records for the best
+                          join order (if the join optimizer is run once
+                          to get the best cardinality else it is set to
+                          DBL_MAX)
+  @param limit_applied_to_nest TRUE if limit is applied for the sort-nest
+                                    cost calculation
+                                FALSE otherwise
 
   @retval
     FALSE       ok
@@ -9424,7 +9434,7 @@ best_extension_by_limited_search(JOIN      *join,
   double best_record_count= DBL_MAX;
   double best_read_time=    DBL_MAX;
   bool disable_jbuf= (join->thd->variables.join_cache_level == 0) ||
-                      nest_created;
+                      nest_created || limit_applied_to_nest;
 
   if (nest_created && !limit_applied_to_nest)
   {
@@ -9549,6 +9559,9 @@ best_extension_by_limited_search(JOIN      *join,
         Json_writer_array trace_rest(thd, "rest_of_plan");
         bool nest_allow= (join->cur_sj_inner_tables == 0 &&
                           join->cur_embedding_map == 0);
+        if (!idx && (index_used >=0 && index_used < MAX_KEY) &&
+            s->table->keys_in_use_for_order_by.is_set(index_used))
+          limit_applied_to_nest= TRUE;
         if (best_extension_by_limited_search(join,
                                              remaining_tables & ~real_table_bit,
                                              idx + 1,
@@ -9592,7 +9605,7 @@ best_extension_by_limited_search(JOIN      *join,
                                                partial_join_cardinality,
                                                current_read_time,
                                                search_depth - 1,
-                                               0,
+                                               prune_level,
                                                use_cond_selectivity,
                                                previous_tables | real_table_bit,
                                                TRUE, cardinality,
@@ -9601,6 +9614,8 @@ best_extension_by_limited_search(JOIN      *join,
           join->positions[idx].sort_nest_operation_here= FALSE;
           trace_rest.end();
         }
+        if (!idx)
+          limit_applied_to_nest= FALSE;
         swap_variables(JOIN_TAB*, join->best_ref[idx], *pos);
       }
       else
