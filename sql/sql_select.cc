@@ -13276,7 +13276,10 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
               sort_nest_info->index_used >= 0))
 	  {					// Only read index tree
             if (tab->loosescan_match_tab)
+            {
               tab->index= tab->loosescan_key;
+              tab->read_first_record= join_read_first;
+            }
             else 
             {
 #ifdef BAD_OPTIMIZATION
@@ -13298,12 +13301,21 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
                 {
                  tab->index= sort_nest_info->index_used;
                  tab->limit= tab->records_read;
+                 uint idx= sort_nest_info->index_used;
+                 int order_direction= test_if_order_by_key(join,
+                                                           join->order,
+                                                           tab->table, idx);
+                 tab->read_first_record= order_direction > 0 ?
+                                         join_read_first :
+                                         join_read_last;
                 }
                 else
+                {
                   tab->index=find_shortest_key(table,
                                                &table->covering_keys);
+                  tab->read_first_record= join_read_first;
+                }
             }
-	    tab->read_first_record= join_read_first;
             /* Read with index_first / index_next */
 	    tab->type= tab->type == JT_ALL ? JT_NEXT : JT_HASH_NEXT;		
 	  }
