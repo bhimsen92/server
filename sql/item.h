@@ -6511,6 +6511,11 @@ public:
       return TRUE;
     return (this->*processor)(arg);
   }
+  /*
+    TODO(varun) enable this when we add a parameter transform_subquery
+    to the transform function
+  */
+  /*
   Item *transform(THD *thd, Item_transformer transformer, uchar *arg)
   {
     if (example)
@@ -6520,7 +6525,7 @@ public:
         setup(thd, new_item);
     }
     return this;
-  }
+  }*/
   virtual Item *safe_charset_converter(THD *thd, CHARSET_INFO *tocs);
   void split_sum_func2_example(THD *thd,  Ref_ptr_array ref_pointer_array,
                                List<Item> &fields, uint flags)

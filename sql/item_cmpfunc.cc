@@ -1700,8 +1700,11 @@ Item *Item_in_optimizer::transform(THD *thd, Item_transformer transformer,
   if ((*args) != new_item)
     thd->change_item_tree(args, new_item);
 
-  /* needs to transform the cached item */
+  /*
+    TODO(varun)
+    needs to transform the cached item
   cache->setup(thd, args[0]);
+  */
 
   if (invisible_mode())
   {
@@ -1732,9 +1735,17 @@ Item *Item_in_optimizer::transform(THD *thd, Item_transformer transformer,
     Item_in_subselect *in_arg= (Item_in_subselect*)args[1];
     thd->change_item_tree(&in_arg->left_expr, args[0]);
 
-    new_item= args[1]->transform(thd, transformer, argument);
-    if (args[1] != new_item)
-      thd->change_item_tree(args + 1, new_item);
+    /*
+      TODO(varun): this is needed for the sort-nest when we have dependent
+      subqyueries, for such cases we would need to introduce a new
+      parameter to transform function like transform_subquery,
+      if set to TRUE we would change the inner contents of the
+      subquery also.
+
+      new_item= args[1]->transform(thd, transformer, argument);
+      if (args[1] != new_item)
+        thd->change_item_tree(args + 1, new_item);
+    */
   }
   return (this->*transformer)(thd, argument);
 }
