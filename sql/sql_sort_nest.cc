@@ -28,6 +28,9 @@ COND* substitute_for_best_equal_field(THD *thd, JOIN_TAB *context_tab,
                                       bool do_substitution);
 enum_nested_loop_state
 end_nest_materialization(JOIN *join, JOIN_TAB *join_tab, bool end_of_records);
+bool get_range_limit_read_cost(const JOIN_TAB *tab, const TABLE *table,
+                               ha_rows table_records, uint keynr,
+                               ha_rows rows_limit, double *read_time);
 /*
   Substitute base table items with nest's table items
 
@@ -433,6 +436,7 @@ bool create_sort_nest_if_needed(JOIN *join)
         return TRUE;
       sort_nest_info->n_tables= n_tables;
       join->sort_nest_info= sort_nest_info;
+      sort_nest_info->index_used= pos->index_no;
       DBUG_ASSERT(sort_nest_info->n_tables != 0);
       return FALSE;
     }
@@ -694,3 +698,107 @@ bool needs_filesort(JOIN_TAB *tab, uint idx, int index_used)
    return !table->keys_in_use_for_order_by.is_set(index_used);
   return TRUE;
 }
+
+/*
+  @brief
+  Check if an index(used for index scan or range scan) can achieve the
+  ordering for the first non-const table, if yes calculate the cost and
+  check if we get a better cost than previous access chosen
+
+  @retval
+    -1  no cheaper index found for ordering
+    >=0 cheaper index found for ordering
+*/
+
+int get_best_index_for_order_by_limit(JOIN_TAB *tab, double *read_time,
+                                      double *records, double cardinality,
+                                      int index_used, uint idx)
+{
+  TABLE *table= tab->table;
+  JOIN *join= tab->join;
+  THD *thd= join->thd;
+  /**
+    Cases when there is no need to consider the indexes that achieve the
+    ordering
+
+    1) If there is no limit
+    2) If there is no order by clause
+    3) Check index for ordering only for the first non-const table
+    4) Cardinality is DBL_MAX, then we don't need to consider the index,
+       it is sent to DBL_MAX for semi-join strategies
+    5) Force index is used
+    6) Sort nest is possible and it is not disabled(done when we want to
+       get the cardinality)
+    7) If there is no index that achieves the ordering
+    8) Already an access method is picked that satisfies the ordering
+
+    Do we need to consider non-covering keys that have no range access?
+    Currently all indexes that satisfy the ordering are considered
+  */
+  if (join->select_limit == HA_POS_ERROR ||
+      !join->order ||
+      idx ||
+      cardinality == DBL_MAX ||
+      table->force_index ||
+      !(join->sort_nest_possible && !join->disable_sort_nest) ||
+      table->keys_in_use_for_order_by.is_clear_all() ||
+      ((index_used >= 0 && index_used < MAX_KEY) &&
+       table->keys_in_use_for_order_by.is_set(index_used)))
+    return -1;
+
+  Json_writer_object trace_index_for_ordering(thd);
+  double est_records= *records;
+  double fanout= cardinality / est_records;
+  int best_index=-1;
+  ha_rows table_records= table->stat_records();
+  Json_writer_array considered_indexes(thd, "considered_indexes");
+  for (uint idx= 0 ; idx < table->s->keys; idx++)
+  {
+    if (!table->keys_in_use_for_order_by.is_set(idx))
+      continue;
+    Json_writer_object possible_key(thd);
+    KEY *keyinfo= table->key_info + idx;
+        possible_key.add("index", keyinfo->name);
+    double rec_per_key, index_scan_time;
+    ha_rows select_limit= join->select_limit;
+    select_limit= (ha_rows) (select_limit < fanout ?
+                             1 : select_limit/fanout);
+
+    est_records= MY_MIN(est_records, ha_rows(table_records *
+                                             table->cond_selectivity));
+    if (select_limit > est_records)
+      select_limit= table_records;
+    else
+      select_limit= (ha_rows) (select_limit * (double) table_records /
+                               est_records);
+    possible_key.add("updated_limit", select_limit);
+    rec_per_key= keyinfo->actual_rec_per_key(keyinfo->user_defined_key_parts-1);
+    set_if_bigger(rec_per_key, 1);
+    index_scan_time= select_limit/rec_per_key *
+                     MY_MIN(rec_per_key, table->file->scan_time());
+    possible_key.add("index_scan_time", index_scan_time);
+    double range_scan_time;
+
+    if (get_range_limit_read_cost(tab, table, table_records, idx,
+                                  select_limit, &range_scan_time))
+    {
+      possible_key.add("range_scan_time", range_scan_time);
+      if (range_scan_time < index_scan_time)
+        index_scan_time= range_scan_time;
+    }
+
+    if (index_scan_time < *read_time)
+    {
+      best_index= idx;
+      *read_time= index_scan_time;
+      *records= select_limit;
+    }
+  }
+  considered_indexes.end();
+  trace_index_for_ordering.add("best_index",
+                                static_cast<ulonglong>(best_index));
+  trace_index_for_ordering.add("records", *records);
+  trace_index_for_ordering.add("best_cost", *read_time);
+  return best_index;
+}
+

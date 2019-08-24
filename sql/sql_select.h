@@ -1009,6 +1009,11 @@ typedef struct st_position
     Flag to be set to TRUE if the join prefix satisfies the ORDER BY CLAUSE
   */
   bool sort_nest_operation_here;
+  /*
+    set to the index number which we pick for index scan
+    -1 otherwise
+  */
+  int index_no;
 
 } POSITION;
 
@@ -2193,6 +2198,9 @@ void substitutions_for_sjm_lookup(JOIN *join, JOIN_TAB *sjm_tab);
 void extract_condition_for_the_nest(JOIN *join);
 void check_cond_extraction_for_nest(THD *thd, Item *cond,
                                     Pushdown_checker checker, uchar* arg);
+int get_best_index_for_order_by_limit(JOIN_TAB *tab, double *read_time,
+                                      double *records, double cardinality,
+                                      int index_used, uint idx);
 
 /*
   General routine to change field->ptr of a NULL-terminated array of Field

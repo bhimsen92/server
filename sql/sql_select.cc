@@ -2878,10 +2878,21 @@ int JOIN::optimize_stage2()
     else if (order &&                      // ORDER BY wo/ preceding GROUP BY
              (simple_order || skip_sort_order)) // which is possibly skippable
     {
-      if (test_if_skip_sort_order(tab, order, select_limit, false, 
-                                  &tab->table->keys_in_use_for_order_by))
+      if (!sort_nest_info)
       {
-        ordered_index_usage= ordered_index_order_by;
+        if (test_if_skip_sort_order(tab, order, select_limit, false,
+                                    &tab->table->keys_in_use_for_order_by))
+        {
+          ordered_index_usage= ordered_index_order_by;
+        }
+      }
+      else
+      {
+        JOIN_TAB *first_tab= sort_nest_info->nest_tab;
+        int idx= first_tab->index;
+        if (idx >= 0  && idx < MAX_KEY &&
+            first_tab->table->keys_in_use_for_order_by.is_set(idx))
+          ordered_index_usage= ordered_index_order_by;
       }
     }
   }
@@ -7996,6 +8007,34 @@ best_access_path(JOIN      *join,
     trace_access_scan.add("cause", "cost");
   }
 
+  if (!best_key &&
+      idx == join->const_tables &&
+      s->table == join->sort_by_table &&
+      join->unit->select_limit_cnt >= records)
+  {
+    trace_access_scan.add("use_tmp_table", true);
+    join->sort_by_table= (TABLE*) 1;  // Must use temporary table
+  }
+  trace_access_scan.end();
+
+  double idx_time= best;
+  double idx_records= records;
+  int idx_no= get_best_index_for_order_by_limit(s, &idx_time, &idx_records,
+                                                cardinality,
+                                                *index_used, idx);
+
+  if (idx_no >= 0)
+  {
+    best= idx_time;
+    best_key= 0;
+    best_ref_depends_map= 0;
+    best_filter= 0;
+    spl_plan= 0;
+    records= idx_records;
+    *index_used= idx_no;
+  }
+
+
   /* Update the cost information for the current partial plan */
   pos->records_read= records;
   pos->read_time=    best;
@@ -8007,17 +8046,9 @@ best_access_path(JOIN      *join,
   pos->spl_plan= spl_plan;
   pos->range_rowid_filter_info= best_filter;
   pos->sort_nest_operation_here= FALSE;
+  pos->index_no= idx_no;
    
   loose_scan_opt.save_to_position(s, loose_scan_pos);
-
-  if (!best_key &&
-      idx == join->const_tables &&
-      s->table == join->sort_by_table &&
-      join->unit->select_limit_cnt >= records)
-  {
-    trace_access_scan.add("use_tmp_table", true);
-    join->sort_by_table= (TABLE*) 1;  // Must use temporary table
-  }
 
   DBUG_VOID_RETURN;
 }
@@ -10364,6 +10395,8 @@ bool JOIN::get_best_combination()
   full_join=0;
   hash_join= FALSE;
 
+  uint index_no= best_positions[const_tables].index_no;
+
   fix_semijoin_strategies_for_picked_join_order(this);
 
   if (create_sort_nest_if_needed(this))
@@ -10378,7 +10411,10 @@ bool JOIN::get_best_combination()
     if (sort_nest_needed())
       join_tab[const_tables + sort_nest_info->n_tables].is_sort_nest= TRUE;
     else
+    {
       sort_nest_info->nest_tab= join_tab+const_tables;
+      sort_nest_info->index_used= index_no;
+    }
   }
 
   JOIN_TAB_RANGE *root_range;
@@ -13223,8 +13259,11 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
               tab->select->quick->index != MAX_KEY && //not index_merge
 	      table->covering_keys.is_set(tab->select->quick->index))
             table->file->ha_start_keyread(tab->select->quick->index);
-	  else if (!table->covering_keys.is_clear_all() &&
-		   !(tab->select && tab->select->quick))
+	  else if ((!table->covering_keys.is_clear_all() &&
+              !(tab->select && tab->select->quick)) ||
+              (sort_nest_info && sort_nest_info->nest_tab == tab &&
+              sort_nest_info->n_tables == 1 &&
+              sort_nest_info->index_used >= 0))
 	  {					// Only read index tree
             if (tab->loosescan_match_tab)
               tab->index= tab->loosescan_key;
@@ -13243,7 +13282,16 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
                 tab->index= table->s->primary_key;
               else
 #endif
-                tab->index=find_shortest_key(table, & table->covering_keys);
+                if (sort_nest_info && sort_nest_info->n_tables == 1 &&
+                    sort_nest_info->nest_tab == tab &&
+                    sort_nest_info->index_used >= 0)
+                {
+                 tab->index= sort_nest_info->index_used;
+                 tab->limit= tab->records_read;
+                }
+                else
+                  tab->index=find_shortest_key(table,
+                                               &table->covering_keys);
             }
 	    tab->read_first_record= join_read_first;
             /* Read with index_first / index_next */
@@ -27994,12 +28042,9 @@ void JOIN::cache_const_exprs()
            to use a full index scan on this index).
 */
 
-static bool get_range_limit_read_cost(const JOIN_TAB *tab, 
-                                      const TABLE *table, 
-                                      ha_rows table_records,
-                                      uint keynr, 
-                                      ha_rows rows_limit,
-                                      double *read_time)
+bool get_range_limit_read_cost(const JOIN_TAB *tab, const TABLE *table,
+                               ha_rows table_records, uint keynr,
+                               ha_rows rows_limit, double *read_time)
 {
   bool res= false;
   /* 
