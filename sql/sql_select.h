@@ -1828,7 +1828,8 @@ public:
 
   bool sort_nest_allowed()
   {
-    return !(const_tables == table_count || !order ||
+    return thd->variables.use_sort_nest &&
+            !(const_tables == table_count || !order ||
              (select_distinct || group_list) || having  ||
              MY_TEST(select_options & OPTION_BUFFER_RESULT) ||
              (rollup.state != ROLLUP::STATE_NONE && select_distinct) ||
