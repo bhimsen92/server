@@ -840,9 +840,9 @@ bool index_satisfies_ordering(JOIN_TAB *tab, int index_used)
 {
   TABLE *table= tab->table;
   if (index_used >=0 && index_used < MAX_KEY &&
-      !table->keys_in_use_for_query.is_clear_all())
+      !table->keys_in_use_for_order_by.is_clear_all())
   {
-    if (table->keys_in_use_for_query.is_set(static_cast<uint>(index_used)))
+    if (table->keys_in_use_for_order_by.is_set(static_cast<uint>(index_used)))
       return TRUE;
   }
   return FALSE;
@@ -903,13 +903,13 @@ void setup_index_use_for_ordering(JOIN *join, int index_no)
 {
   SORT_NEST_INFO *sort_nest_info= join->sort_nest_info;
   sort_nest_info->nest_tab= join->join_tab + join->const_tables;
-  POSITION *cur_pos= &join->best_positions[const_tables];
+  POSITION *cur_pos= &join->best_positions[join->const_tables];
   if (index_satisfies_ordering(cur_pos->table, index_no))
   {
     if (cur_pos->table->table->quick_keys.is_set(index_no))
     {
       // Range scan
-      (void)setup_range_scan(this, cur_pos->table, index_no);
+      (void)setup_range_scan(join, cur_pos->table, index_no);
       sort_nest_info->index_used= -1;
     }
     else

@@ -44,7 +44,31 @@ let $query= select a,b,c from t1 where a=1 and c=2 order by b limit 5;
 eval explain $query;
 eval $query;
 
+--echo #
+--echo # this needs to be fixed, desc is not taken into consideration
+--echo #
+
 let $query= select a,b,c from t1 where a=1 and c=2 order by b desc limit 5;
+eval explain $query;
+eval $query;
+drop table t1;
+
+CREATE TABLE t1 (a int, b int, c int, KEY (a), KEY (b));
+insert into t1 values (0,1,0), (0,2,0), (0,3,0), (0,4,0), (0,5,0), (0,6,0);
+insert into t1 values (1,7,1), (1,8,1), (1,9,1), (1,10,1), (1,11,2), (1,12,1);
+insert into t1 values (1,7,1), (1,8,1), (1,9,1), (1,10,2), (1,11,2), (1,12,2);
+insert into t1 values (1,7,1), (1,8,1), (1,9,1), (1,10,2), (1,11,2), (1,12,2);
+insert into t1 values (1,1,1);
+
+--echo #
+--echo # range access on key(a) should be used here
+--echo #
+
+let $query= select a,b,c from t1 where a >= 1 and b > 8 order by a limit 2;
+eval explain $query;
+eval $query;
+
+let $query= select a,b,c from t1 where a >= 1 and b > 8 order by a desc limit 2;
 eval explain $query;
 eval $query;
 drop table t1;

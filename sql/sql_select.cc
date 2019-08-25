@@ -8074,8 +8074,16 @@ best_access_path(JOIN      *join,
   pos->sort_nest_operation_here= FALSE;
   pos->index_no= idx_no;
 
-  if (join->sort_nest_allowed() && index_satisfies_ordering(s, *index_used))
-    pos->sort_nest_operation_here= TRUE;
+  /*
+    sort_nest_operation_here is set to TRUE here in the special case
+    when we only have one table in the join. Generally
+    sort_nest_operation_here is set when we check if ordering is achieved
+    in the sort-nest branch of best_extension_by_limited_search.
+  */
+
+  if (!idx && join->sort_nest_allowed() && join->table_count == 1 &&
+      index_satisfies_ordering(s, *index_used))
+      pos->sort_nest_operation_here= TRUE;
 
   loose_scan_opt.save_to_position(s, loose_scan_pos);
 
@@ -9624,8 +9632,7 @@ best_extension_by_limited_search(JOIN      *join,
         bool nest_allow= (join->cur_sj_inner_tables == 0 &&
                           join->cur_embedding_map == 0);
         if (!idx && join->sort_nest_allowed() &&
-            (index_used >=0 && index_used < MAX_KEY) &&
-            s->table->keys_in_use_for_order_by.is_set(index_used))
+            index_satisfies_ordering(s, index_used))
           limit_applied_to_nest= TRUE;
 
         /*
@@ -9639,6 +9646,7 @@ best_extension_by_limited_search(JOIN      *join,
             !join->disable_sort_nest &&
             check_join_prefix_contains_ordering(join, s, previous_tables))
         {
+          // SORT_NEST branch
           join->positions[idx].sort_nest_operation_here= TRUE;
           double cost= 0;
           if (needs_filesort(s, idx, index_used))
@@ -10448,7 +10456,7 @@ bool JOIN::get_best_combination()
     if (sort_nest_needed())
       join_tab[const_tables + sort_nest_info->n_tables].is_sort_nest= TRUE;
     else
-      setup_index_use_for_ordering(join, index_no);
+      setup_index_use_for_ordering(this, index_no);
   }
 
   JOIN_TAB_RANGE *root_range;
