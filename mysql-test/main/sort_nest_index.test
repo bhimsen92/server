@@ -27,3 +27,25 @@ select t1.a,t1.b,t1.c,t2.a,t2.b from t1, t2 where t1.a=1 and t1.c=t2.b order by 
 select t1.a,t1.b,t1.c,t2.a,t2.b from t1, t2 where t1.a=1 and t1.c=t2.b order by t1.b desc limit 2;
 
 drop table t1,t2;
+
+CREATE TABLE t1 (a int, b int, c int, KEY a_b (a,b), KEY a_c (a,c));
+
+insert into t1 values (0,1,0), (0,2,0), (0,3,0), (0,4,0), (0,5,0), (0,6,0);
+insert into t1 values (1,7,1), (1,8,1), (1,9,1), (1,10,1), (1,11,1), (1,12,1);
+insert into t1 values (1,7,2), (1,8,2), (1,9,2), (1,10,2), (1,11,2), (1,12,2);
+insert into t1 values (1,7,2), (1,8,2), (1,9,2), (1,10,2), (1,11,2), (1,12,2);
+
+--echo #
+--echo # ref access on key a_b, no need for filesort
+--echo # rows should be 8
+--echo #
+
+let $query= select a,b,c from t1 where a=1 and c=2 order by b limit 5;
+eval explain $query;
+eval $query;
+
+let $query= select a,b,c from t1 where a=1 and c=2 order by b desc limit 5;
+eval explain $query;
+eval $query;
+drop table t1;
+

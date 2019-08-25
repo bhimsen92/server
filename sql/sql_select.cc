@@ -7726,22 +7726,50 @@ best_access_path(JOIN      *join,
         we have 2 keys idx1(a,b) and idx2(a,c)
         so cost of sorting needs to be added for idx2 and not for idx1
       */
-      if (join->sort_nest_possible && !join->disable_sort_nest)
+      double cost_of_sorting= 0;
+      if (join->sort_nest_possible && !join->disable_sort_nest && !idx &&
+          join->sort_nest_allowed() &&
+          !s->table->keys_in_use_for_order_by.is_clear_all())
       {
-        tmp += (!idx &&
-                !s->table->keys_in_use_for_order_by.is_clear_all() &&
-                !s->table->keys_in_use_for_order_by.is_set(start_key->key)) ?
-                sort_nest_oper_cost(join, records,
-                                    s->get_estimated_record_length(), 0) :
-                0.0;
+        double sorting_cost;
+        sorting_cost= sort_nest_oper_cost(join, records,
+                                          s->get_estimated_record_length(),
+                                          idx);
+        if (!s->table->keys_in_use_for_order_by.is_set(start_key->key))
+        {
+          cost_of_sorting= sorting_cost;
+          trace_access_idx.add("cost_of_sorting", cost_of_sorting);
+          trace_access_idx.add("satisfies_ordering", false);
+        }
+        else
+        {
+          /*
+            Apply limit here if possible, as ref access here achieves the
+            key that would satisfy the ordering.
+          */
+          trace_access_idx.add("records_before_limit_considered", records);
+          records= COST_MULT(records, join->fraction_output_for_nest);
+          records= ceil(records);
+          trace_access_idx.add("records_after_limit_considered", records);
+          tmp= records;
+          set_if_smaller(tmp, (double) thd->variables.max_seeks_for_key);
+          if (table->covering_keys.is_set(key))
+            tmp= table->file->keyread_time(key, 1, (ha_rows) tmp);
+          else
+            tmp= table->file->read_time(key, 1,
+                                        (ha_rows) MY_MIN(tmp,s->worst_seeks));
+          tmp= COST_MULT(tmp, record_count);
+          trace_access_idx.add("satisfies_ordering", true);
+        }
       }
 
       trace_access_idx.add("rows", records).add("cost", tmp);
 
-      if (tmp + 0.0001 < best_time - records/(double) TIME_FOR_COMPARE)
+      if (tmp + cost_of_sorting+ 0.0001 < best_time - records/(double) TIME_FOR_COMPARE)
       {
         trace_access_idx.add("chosen", true);
-        best_time= COST_ADD(tmp, records/(double) TIME_FOR_COMPARE);
+        best_time= COST_ADD(COST_ADD(tmp, cost_of_sorting),
+                            records/(double) TIME_FOR_COMPARE);
         /*
           best here is assigned the cost of reading the rows via the index
           and not the cost of  evalutation the part of the where clause
@@ -8675,12 +8703,17 @@ greedy_search(JOIN      *join,
     to put a nest for a join prefix
   */
   double cardinality= DBL_MAX;
-  if (!join->disable_sort_nest)
+  if (!join->disable_sort_nest && join->sort_nest_allowed())
   {
     cardinality= join->join_record_count;
     join->fraction_output_for_nest= join->select_limit < cardinality ?
                                     (join->select_limit / cardinality) :
                                      1.0;
+    Json_writer_object trace_cardinality(join->thd);
+    trace_cardinality.add("cardinality", cardinality);
+    trace_cardinality.add("fraction_output_for_nest",
+                          join->fraction_output_for_nest);
+
   }
   DBUG_ENTER("greedy_search");
 
@@ -9468,7 +9501,7 @@ best_extension_by_limited_search(JOIN      *join,
   if (nest_created && !limit_applied_to_nest)
   {
     record_count= COST_MULT(record_count, join->fraction_output_for_nest);
-    set_if_bigger(record_count, 1);
+    record_count= ceil(record_count);
     limit_applied_to_nest= TRUE;
   }
 
