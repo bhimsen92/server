@@ -2203,6 +2203,9 @@ int get_best_index_for_order_by_limit(JOIN_TAB *tab, double *read_time,
                                       double *records, double cardinality,
                                       int index_used, uint idx);
 bool check_if_join_buffering_needed(JOIN *join, JOIN_TAB *tab);
+bool index_satisfies_ordering(JOIN_TAB *tab, int index_used);
+bool setup_range_scan(JOIN *join, JOIN_TAB *tab, uint idx);
+void setup_index_use_for_ordering(JOIN *join, int index_no);
 
 /*
   General routine to change field->ptr of a NULL-terminated array of Field

@@ -311,7 +311,7 @@ static double table_cond_selectivity(JOIN *join, uint idx, JOIN_TAB *s,
                                      table_map rem_tables);
 void set_postjoin_aggr_write_func(JOIN_TAB *tab);
 
-static Item **get_sargable_cond(JOIN *join, TABLE *table);
+Item **get_sargable_cond(JOIN *join, TABLE *table);
 
 #ifndef DBUG_OFF
 
@@ -4735,7 +4735,7 @@ void mark_join_nest_as_const(JOIN *join,
     - "t1 LEFT JOIN (...) ON ..." uses the join nest's ON expression.
 */
 
-static Item **get_sargable_cond(JOIN *join, TABLE *table)
+Item **get_sargable_cond(JOIN *join, TABLE *table)
 {
   Item **retval;
   if (table->pos_in_table_list->on_expr)
@@ -8073,7 +8073,10 @@ best_access_path(JOIN      *join,
   pos->range_rowid_filter_info= best_filter;
   pos->sort_nest_operation_here= FALSE;
   pos->index_no= idx_no;
-   
+
+  if (join->sort_nest_allowed() && index_satisfies_ordering(s, *index_used))
+    pos->sort_nest_operation_here= TRUE;
+
   loose_scan_opt.save_to_position(s, loose_scan_pos);
 
   DBUG_VOID_RETURN;
@@ -10445,10 +10448,7 @@ bool JOIN::get_best_combination()
     if (sort_nest_needed())
       join_tab[const_tables + sort_nest_info->n_tables].is_sort_nest= TRUE;
     else
-    {
-      sort_nest_info->nest_tab= join_tab+const_tables;
-      sort_nest_info->index_used= index_no;
-    }
+      setup_index_use_for_ordering(join, index_no);
   }
 
   JOIN_TAB_RANGE *root_range;
@@ -11710,7 +11710,8 @@ make_join_select(JOIN *join,SQL_SELECT *select,COND *cond)
               tab->table->reginfo.impossible_range)
 	    DBUG_RETURN(1);
 	}
-	else if (tab->type == JT_ALL && ! use_quick_range)
+	else if (tab->type == JT_ALL && ! use_quick_range &&
+           !join->sort_nest_info)
 	{
 	  if (!tab->const_keys.is_clear_all() &&
 	      tab->table->reginfo.impossible_range)

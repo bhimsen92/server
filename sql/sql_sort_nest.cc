@@ -31,6 +31,8 @@ end_nest_materialization(JOIN *join, JOIN_TAB *join_tab, bool end_of_records);
 bool get_range_limit_read_cost(const JOIN_TAB *tab, const TABLE *table,
                                ha_rows table_records, uint keynr,
                                ha_rows rows_limit, double *read_time);
+Item **get_sargable_cond(JOIN *join, TABLE *table);
+
 /*
   Substitute base table items with nest's table items
 
@@ -822,4 +824,97 @@ bool check_if_join_buffering_needed(JOIN *join, JOIN_TAB *tab)
       return FALSE;
   }
   return TRUE;
+}
+
+
+/*
+  @brief
+  Check if an index satisfies the ORDER BY clause or not
+
+  @retval
+    TRUE index satisfies the ordering
+    FALSE index does not satisfy the ordering
+*/
+
+bool index_satisfies_ordering(JOIN_TAB *tab, int index_used)
+{
+  TABLE *table= tab->table;
+  if (index_used >=0 && index_used < MAX_KEY &&
+      !table->keys_in_use_for_query.is_clear_all())
+  {
+    if (table->keys_in_use_for_query.is_set(static_cast<uint>(index_used)))
+      return TRUE;
+  }
+  return FALSE;
+}
+
+
+bool setup_range_scan(JOIN *join, JOIN_TAB *tab, uint idx)
+{
+    SQL_SELECT *sel= NULL;
+    Item **sargable_cond= get_sargable_cond(join, tab->table);
+    int err, rc, direction;
+    uint used_key_parts;
+    key_map keymap_for_range;
+    sel= make_select(tab->table, join->const_table_map,
+                     join->const_table_map,
+                     *sargable_cond, (SORT_INFO*) 0, 1, &err);
+    if (!sel)
+      goto use_filesort;
+
+
+    keymap_for_range.clear_all();  // Force the creation of quick select
+    keymap_for_range.set_bit(idx); // only for new_ref_key.
+
+    rc= sel->test_quick_select(join->thd, keymap_for_range,
+                               (table_map) 0,
+                               (ha_rows) HA_POS_ERROR,
+                               true, false, true, true);
+    if (rc <= 0)
+      goto use_filesort;
+
+    direction= test_if_order_by_key(join, join->order, tab->table, idx,
+                                    &used_key_parts);
+    if (direction == -1)
+    {
+      QUICK_SELECT_I *reverse_quick;
+      if (sel && sel->quick)
+      {
+        reverse_quick= sel->quick->make_reverse(used_key_parts);
+        sel->set_quick(reverse_quick);
+      }
+    }
+    tab->quick= sel->quick;
+    sel->quick= 0;
+
+  use_filesort:
+    delete sel;
+  return rc <=0 ? FALSE : TRUE;
+
+}
+
+
+/*
+  @brief
+    Setup range or index scan for the ordering
+*/
+
+void setup_index_use_for_ordering(JOIN *join, int index_no)
+{
+  SORT_NEST_INFO *sort_nest_info= join->sort_nest_info;
+  sort_nest_info->nest_tab= join->join_tab + join->const_tables;
+  POSITION *cur_pos= &join->best_positions[const_tables];
+  if (index_satisfies_ordering(cur_pos->table, index_no))
+  {
+    if (cur_pos->table->table->quick_keys.is_set(index_no))
+    {
+      // Range scan
+      (void)setup_range_scan(this, cur_pos->table, index_no);
+      sort_nest_info->index_used= -1;
+    }
+    else
+      sort_nest_info->index_used= index_no; // Index scan
+  }
+  else
+    sort_nest_info->index_used= -1;
 }
