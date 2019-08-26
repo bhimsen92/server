@@ -2887,9 +2887,16 @@ int JOIN::optimize_stage2()
       else
       {
         JOIN_TAB *first_tab= sort_nest_info->nest_tab;
-        int idx= first_tab->index;
-        if (idx >= 0  && idx < MAX_KEY &&
-            first_tab->table->keys_in_use_for_order_by.is_set(idx))
+        int idx= -1;
+        if (first_tab->type == JT_REF)
+          idx= first_tab->ref.key;
+        else if (first_tab->type == JT_NEXT)
+          idx= first_tab->index;
+        else if (first_tab->type == JT_ALL &&
+                 first_tab->select && first_tab->select->quick)
+          idx= first_tab->select->quick->index;
+
+        if (index_satisfies_ordering(first_tab, idx))
           ordered_index_usage= ordered_index_order_by;
       }
     }
@@ -8074,17 +8081,6 @@ best_access_path(JOIN      *join,
   pos->sort_nest_operation_here= FALSE;
   pos->index_no= idx_no;
 
-  /*
-    sort_nest_operation_here is set to TRUE here in the special case
-    when we only have one table in the join. Generally
-    sort_nest_operation_here is set when we check if ordering is achieved
-    in the sort-nest branch of best_extension_by_limited_search.
-  */
-
-  if (!idx && join->sort_nest_allowed() && join->table_count == 1 &&
-      index_satisfies_ordering(s, *index_used))
-      pos->sort_nest_operation_here= TRUE;
-
   loose_scan_opt.save_to_position(s, loose_scan_pos);
 
   DBUG_VOID_RETURN;
@@ -9553,6 +9549,28 @@ best_extension_by_limited_search(JOIN      *join,
       best_access_path(join, s, remaining_tables, idx, disable_jbuf,
                        record_count, position, &loose_scan_pos,
                        &index_used, cardinality);
+
+      /*
+        sort_nest_operation_here is set to TRUE here in the special case
+        when we only have one table in the join. Generally
+        sort_nest_operation_here is set when we check if ordering is achieved
+        in the sort-nest branch of best_extension_by_limited_search.
+      */
+      if (!idx && join->sort_nest_allowed() &&
+          index_satisfies_ordering(s, index_used))
+      {
+        if (s->table->force_index)
+        {
+          /*
+            have to apply the limit for the forced index, currently
+            this is not done is best_access_path
+          */
+          position->records_read= COST_MULT(position->records_read,
+                                            join->fraction_output_for_nest);
+          position->index_no= index_used;
+        }
+        position->sort_nest_operation_here= TRUE;
+      }
 
       /* Compute the cost of extending the plan with 's' */
       current_record_count= COST_MULT(record_count, position->records_read);

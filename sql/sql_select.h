@@ -1822,6 +1822,7 @@ public:
     8) Using Rollup
     9) Using SQL_BUFFER_RESULT
     10) Only Select queries can use the sort nest
+    11) LIMIT is present
 
     Returns TRUE if sort-nest is allowed
   */
@@ -1835,6 +1836,7 @@ public:
              (rollup.state != ROLLUP::STATE_NONE && select_distinct) ||
              select_lex->window_specs.elements > 0 ||
              select_lex->agg_func_used() ||
+             select_limit == HA_POS_ERROR ||
              thd->lex->sql_command != SQLCOM_SELECT);
   }
   bool check_if_order_by_expensive();

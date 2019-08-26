@@ -59,7 +59,7 @@ delimiter ;|
 --echo
 
 let $query= 
-select * from t1,t2,t3 where t1.a > 95 and  t1.a=t2.a and t1.b = t3.a order by t2.b;
+select * from t1,t2,t3 where t1.a > 95 and  t1.a=t2.a and t1.b = t3.a order by t2.b limit 5;
 
 alter table t2 add key(a);
 eval explain $query;
@@ -208,7 +208,7 @@ INSERT INTO t4 VALUES (2,'x'), (1,'x');
 
 let $query= SELECT t.f1 as f
             FROM (SELECT DISTINCT t1.* FROM t1,t2 WHERE t2.f2 = t1.f2) t,t3,t4
-            WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f;
+            WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f limit 10;
 
 eval explain $query;
 eval explain format=json $query;
@@ -218,7 +218,7 @@ eval $query;
 
 let $query= SELECT t4.f1 as f, t.f1 as g
             FROM (SELECT DISTINCT t1.* FROM t1,t2 WHERE t2.f2 = t1.f2) t,t3,t4
-            WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f,g;
+            WHERE t4.f2 = t3.f2  AND t4.f2 = t.f1 ORDER BY f,g limit 10;
 eval explain $query;
 eval explain format=json $query;
 eval $query;
@@ -394,7 +394,7 @@ insert into t1 values (1,1,2);
 
 --echo # ref access on key a_b, no need for filesort
 
-let $query= select a,b,c from t1 where a=1 and c=2 order by b;
+let $query= select a,b,c from t1 where a=1 and c=2 order by b limit 10;
 eval explain $query;
 eval $query;
 drop table t1;

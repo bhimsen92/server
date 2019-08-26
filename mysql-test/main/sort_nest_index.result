@@ -90,3 +90,33 @@ a	b	c
 1	12	2
 1	11	2
 drop table t1;
+#
+# Force index used to achieve ordering
+#
+CREATE TABLE t1 (
+id int(11) NOT NULL,
+parent_id int(11) DEFAULT NULL,
+name varchar(10) DEFAULT NULL,
+PRIMARY KEY (id),
+KEY ind_parent_id (parent_id)
+);
+insert into t1 (id, parent_id, name) values
+(10,NULL,'A'), (20,10,'B'), (30,10,'C'),
+(40,NULL,'D'), (50,40,'E'), (60,40,'F'),
+(70,NULL,'J');
+This must show type=index, extra=Using where
+set use_sort_nest= 0;
+explain SELECT * FROM t1 FORCE INDEX (PRIMARY) WHERE parent_id IS NOT NULL ORDER BY id DESC LIMIT 1;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	index	NULL	PRIMARY	4	NULL	1	Using where
+SELECT * FROM t1 FORCE INDEX (PRIMARY) WHERE parent_id IS NOT NULL ORDER BY id DESC LIMIT 1;
+id	parent_id	name
+60	40	F
+set use_sort_nest= 1;
+explain SELECT * FROM t1 FORCE INDEX (PRIMARY) WHERE parent_id IS NOT NULL ORDER BY id DESC LIMIT 1;
+id	select_type	table	type	possible_keys	key	key_len	ref	rows	Extra
+1	SIMPLE	t1	index	NULL	PRIMARY	4	NULL	1	Using where
+SELECT * FROM t1 FORCE INDEX (PRIMARY) WHERE parent_id IS NOT NULL ORDER BY id DESC LIMIT 1;
+id	parent_id	name
+60	40	F
+drop table t1;
