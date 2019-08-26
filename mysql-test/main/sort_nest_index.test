@@ -102,3 +102,46 @@ eval $query;
 
 drop table t1;
 
+CREATE TABLE t1(
+   a int NOT NULL,
+   b char NULL,
+   PRIMARY KEY(a)
+);
+
+INSERT INTO t1 VALUES (1,'a'), (2,'b'), (3,'c'), (4,'d');
+
+--echo #
+--echo # Should use index condition
+--echo #
+
+let $query= SELECT * FROM t1
+            WHERE a BETWEEN 1 and 2
+            ORDER BY a
+            LIMIT 2;
+
+set use_sort_nest=0;
+eval EXPLAIN $query;
+eval $query;
+
+set use_sort_nest=1;
+eval EXPLAIN $query;
+eval $query;
+
+--echo #
+--echo # Should not use index condition as ORDER by DESC is used
+--echo #
+
+let $query= SELECT * FROM t1
+            WHERE a BETWEEN 1 and 2
+            ORDER BY a DESC
+            LIMIT 2;
+
+set use_sort_nest= 0;
+eval EXPLAIN $query;
+eval $query;
+
+set use_sort_nest= 1;
+eval EXPLAIN $query;
+eval $query;
+
+drop table t1;

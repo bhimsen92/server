@@ -856,6 +856,18 @@ bool setup_range_scan(JOIN *join, JOIN_TAB *tab, uint idx)
     int err, rc, direction;
     uint used_key_parts;
     key_map keymap_for_range;
+
+    /*
+      TODO(varun)
+      Find a workaround for this, alreay created a QUICK object, can't
+      we just use the same object even if the reversing is required.
+    */
+    if (tab->quick)
+    {
+      delete tab->quick;
+      tab->quick= 0;
+    }
+
     sel= make_select(tab->table, join->const_table_map,
                      join->const_table_map,
                      *sargable_cond, (SORT_INFO*) 0, 1, &err);
@@ -904,6 +916,9 @@ void setup_index_use_for_ordering(JOIN *join, int index_no)
   SORT_NEST_INFO *sort_nest_info= join->sort_nest_info;
   sort_nest_info->nest_tab= join->join_tab + join->const_tables;
   POSITION *cur_pos= &join->best_positions[join->const_tables];
+  index_no= (index_no == -1) ?
+            (cur_pos->table->quick ? cur_pos->table->quick->index : -1) :
+            index_no;
   if (index_satisfies_ordering(cur_pos->table, index_no))
   {
     if (cur_pos->table->table->quick_keys.is_set(index_no))
@@ -913,8 +928,31 @@ void setup_index_use_for_ordering(JOIN *join, int index_no)
       sort_nest_info->index_used= -1;
     }
     else
+    {
+      if (cur_pos->table->quick)
+      {
+        delete cur_pos->table->quick;
+        cur_pos->table->quick= 0;
+      }
       sort_nest_info->index_used= index_no; // Index scan
+    }
   }
   else
     sort_nest_info->index_used= -1;
+}
+
+
+int get_index_on_table(JOIN_TAB *tab)
+{
+  int idx= -1;
+  if (tab->type == JT_REF  || tab->type == JT_EQ_REF ||
+      tab->type == JT_REF_OR_NULL)
+    idx= tab->ref.key;
+  else if (tab->type == JT_NEXT)
+    idx= tab->index;
+  else if (tab->type == JT_ALL &&
+           tab->select && tab->select->quick)
+    idx= tab->select->quick->index;
+
+  return idx;
 }

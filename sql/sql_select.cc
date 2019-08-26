@@ -2887,17 +2887,13 @@ int JOIN::optimize_stage2()
       else
       {
         JOIN_TAB *first_tab= sort_nest_info->nest_tab;
-        int idx= -1;
-        if (first_tab->type == JT_REF)
-          idx= first_tab->ref.key;
-        else if (first_tab->type == JT_NEXT)
-          idx= first_tab->index;
-        else if (first_tab->type == JT_ALL &&
-                 first_tab->select && first_tab->select->quick)
-          idx= first_tab->select->quick->index;
+        int idx= get_index_on_table(first_tab);
 
         if (index_satisfies_ordering(first_tab, idx))
+        {
+          resetup_access_for_ordering(first_tab, idx);
           ordered_index_usage= ordered_index_order_by;
+        }
       }
     }
   }
@@ -13336,10 +13332,7 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
               sort_nest_info->index_used >= 0))
 	  {					// Only read index tree
             if (tab->loosescan_match_tab)
-            {
               tab->index= tab->loosescan_key;
-              tab->read_first_record= join_read_first;
-            }
             else 
             {
 #ifdef BAD_OPTIMIZATION
@@ -13355,27 +13348,17 @@ make_join_readinfo(JOIN *join, ulonglong options, uint no_jbuf_after)
                 tab->index= table->s->primary_key;
               else
 #endif
-                if (sort_nest_info && sort_nest_info->n_tables == 1 &&
-                    sort_nest_info->nest_tab == tab &&
-                    sort_nest_info->index_used >= 0)
-                {
-                 tab->index= sort_nest_info->index_used;
-                 tab->limit= tab->records_read;
-                 uint idx= sort_nest_info->index_used;
-                 int order_direction= test_if_order_by_key(join,
-                                                           join->order,
-                                                           tab->table, idx);
-                 tab->read_first_record= order_direction > 0 ?
-                                         join_read_first :
-                                         join_read_last;
-                }
-                else
-                {
-                  tab->index=find_shortest_key(table,
-                                               &table->covering_keys);
-                  tab->read_first_record= join_read_first;
-                }
+              if (sort_nest_info && sort_nest_info->n_tables == 1 &&
+                  sort_nest_info->nest_tab == tab &&
+                  sort_nest_info->index_used >= 0)
+              {
+                tab->index= sort_nest_info->index_used;
+                tab->limit= tab->records_read;
+              }
+              else
+                tab->index=find_shortest_key(table, &table->covering_keys);
             }
+            tab->read_first_record= join_read_first;
             /* Read with index_first / index_next */
 	    tab->type= tab->type == JT_ALL ? JT_NEXT : JT_HASH_NEXT;		
 	  }
@@ -29098,6 +29081,46 @@ bool JOIN::check_if_order_by_expensive()
       return TRUE;
   }
   return FALSE;
+}
+
+
+/*
+  @brief
+  reset the way to access index in the case when we have ordering in DESC
+  Also cancel the Index Condition Pushdown for the indexes that need to
+  do the ordering in reverse order
+*/
+
+void resetup_access_for_ordering(JOIN_TAB* tab, int idx)
+{
+  JOIN *join= tab->join;
+  int direction= test_if_order_by_key(join, join->order, tab->table, idx);
+  if (direction == -1)
+  {
+    if (tab->type == JT_REF || tab->type == JT_EQ_REF)
+    {
+      tab->read_first_record= join_read_last_key;
+      tab->read_record.read_record_func= join_read_prev_same;
+      /*
+        Cancel Pushed Index Condition, as it doesn't work for reverse scans.
+      */
+      if (tab->select && tab->select->pre_idx_push_select_cond)
+      {
+        tab->set_cond(tab->select->pre_idx_push_select_cond);
+         tab->table->file->cancel_pushed_idx_cond();
+      }
+    }
+    else if (tab->type == JT_NEXT)
+      tab->read_first_record= join_read_last;
+    else if (tab->type == JT_ALL && tab->select && tab->select->quick)
+    {
+      if (tab->select && tab->select->pre_idx_push_select_cond)
+      {
+        tab->set_cond(tab->select->pre_idx_push_select_cond);
+         tab->table->file->cancel_pushed_idx_cond();
+      }
+    }
+  }
 }
 
 
