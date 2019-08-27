@@ -392,7 +392,7 @@ insert into t1 values (1,7,2), (1,8,2), (1,9,2), (1,10,2), (1,11,2), (1,12,2);
 insert into t1 values (1,7,2), (1,8,2), (1,9,2), (1,10,2), (1,11,2), (1,12,2);
 insert into t1 values (1,1,2);
 
---echo # ref access on key a_b, no need for filesort
+--echo # index key a_b, no need for filesort
 
 let $query= select a,b,c from t1 where a=1 and c=2 order by b limit 10;
 eval explain $query;

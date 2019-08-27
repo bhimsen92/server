@@ -721,6 +721,8 @@ int get_best_index_for_order_by_limit(JOIN_TAB *tab, double *read_time,
   TABLE *table= tab->table;
   JOIN *join= tab->join;
   THD *thd= join->thd;
+  double save_read_time= *read_time;
+  double save_records= *records;
   /**
     Cases when there is no need to consider the indexes that achieve the
     ordering
@@ -745,9 +747,7 @@ int get_best_index_for_order_by_limit(JOIN_TAB *tab, double *read_time,
       cardinality == DBL_MAX ||
       table->force_index ||
       !(join->sort_nest_possible && !join->disable_sort_nest) ||
-      table->keys_in_use_for_order_by.is_clear_all() ||
-      ((index_used >= 0 && index_used < MAX_KEY) &&
-       table->keys_in_use_for_order_by.is_set(index_used)))
+      table->keys_in_use_for_order_by.is_clear_all())
     return -1;
 
   Json_writer_object trace_index_for_ordering(thd);
@@ -803,6 +803,21 @@ int get_best_index_for_order_by_limit(JOIN_TAB *tab, double *read_time,
                                 static_cast<ulonglong>(best_index));
   trace_index_for_ordering.add("records", *records);
   trace_index_for_ordering.add("best_cost", *read_time);
+
+  /*
+    If an index already found satisfied the ordering and we picked index
+    scan then revert the cost and stick with the access picked first.
+    Index scan would not help in comparision with ref access.
+  */
+  if (index_satisfies_ordering(tab, index_used))
+  {
+    if (!table->quick_keys.is_set(static_cast<uint>(index_used)))
+    {
+      best_index= -1;
+      *records= save_records;
+      *read_time= save_read_time;
+    }
+  }
   return best_index;
 }
 

@@ -36,17 +36,12 @@ insert into t1 values (1,7,2), (1,8,2), (1,9,2), (1,10,2), (1,11,2), (1,12,2);
 insert into t1 values (1,7,2), (1,8,2), (1,9,2), (1,10,2), (1,11,2), (1,12,2);
 
 --echo #
---echo # ref access on key a_b, no need for filesort
---echo # rows should be 8
+--echo # index a_b should be used, no need for filesort
 --echo #
 
 let $query= select a,b,c from t1 where a=1 and c=2 order by b limit 5;
 eval explain $query;
 eval $query;
-
---echo #
---echo # this needs to be fixed, desc is not taken into consideration
---echo #
 
 let $query= select a,b,c from t1 where a=1 and c=2 order by b desc limit 5;
 eval explain $query;
