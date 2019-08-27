@@ -1,4 +1,5 @@
 set use_sort_nest=1;
+set @save_use_sort_nest= @@use_sort_nest;
 CREATE TABLE t1 (a int, b int, c int, KEY(a), key(b))engine=MYISAM;
 
 insert into t1 values (1,9,1), (1,8,2), (1,9,3), (1,10,4), (1,11,5), (1,12,6);
@@ -140,3 +141,83 @@ eval EXPLAIN $query;
 eval $query;
 
 drop table t1;
+
+set use_sort_nest= @save_use_sort_nest;
+
+create table t1(a int, b int, c int, key(a), key a_b(a,b)); # 10 rows
+insert into t1 values (0,1,0), (0,2,0), (0,3,0);
+insert into t1 values (1,6,1), (1,7,1), (1,5,1);
+insert into t1 values (2,8,2), (2,9,3), (2,10,4);
+insert into t1 values (3,1,5);
+
+create table t2(a int, b int, c int, key(b), key(c)); # 10 rows
+insert into t2 select a, b, c from t1;
+
+create table t3(a int, b int, c int, key(c)); # 100 rows
+insert into t3 select t1.a+t2.a, t1.b+t2.b, t1.c+t2.c from t1,t2;
+
+--echo #
+--echo # Testing using of Indexes on first non-const table
+--echo #
+
+--echo #
+--echo #  Using range scan
+--echo #
+let $query= SELECT *
+            FROM
+              t1,t2
+            WHERE
+              t1.a=2 AND t2.b > 8 AND
+              t1.b=t2.b
+            ORDER BY t1.b LIMIT 10;
+
+set use_sort_nest= 0;
+eval EXPLAIN $query;
+eval $query;
+
+set use_sort_nest= 1;
+eval EXPLAIN $query;
+eval $query;
+
+--echo #
+--echo #  Using ref access
+--echo #
+let $query= SELECT *
+            FROM
+              t1,t2
+            WHERE
+              t1.a=2 AND t2.c >= 1 AND
+              t1.b=t2.b
+            ORDER BY t1.b LIMIT 10;
+
+set use_sort_nest= 0;
+eval EXPLAIN $query;
+eval $query;
+
+set use_sort_nest= 1;
+eval EXPLAIN $query;
+eval $query;
+
+--echo #
+--echo # using index scan
+--echo #
+
+alter table t1 add key idx2(b,a);
+let $query= SELECT t1.b, t2.a, t2.b, t2.c
+            FROM
+              t1,t2
+            WHERE
+              t2.b=t1.a
+            ORDER BY t1.b LIMIT 5;
+
+set use_sort_nest= 0;
+eval EXPLAIN $query;
+eval $query;
+
+set use_sort_nest= 1;
+eval EXPLAIN $query;
+eval $query;
+
+drop table t1,t2,t3;
+
+set use_sort_nest= @save_use_sort_nest;
