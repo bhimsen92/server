@@ -153,9 +153,6 @@ insert into t1 values (3,1,5);
 create table t2(a int, b int, c int, key(b), key(c)); # 10 rows
 insert into t2 select a, b, c from t1;
 
-create table t3(a int, b int, c int, key(c)); # 100 rows
-insert into t3 select t1.a+t2.a, t1.b+t2.b, t1.c+t2.c from t1,t2;
-
 --echo #
 --echo # Testing using of Indexes on first non-const table
 --echo #
@@ -218,6 +215,25 @@ set use_sort_nest= 1;
 eval EXPLAIN $query;
 eval $query;
 
-drop table t1,t2,t3;
+--echo #
+--echo # Dynamic ranges not allowed with use_sort_nest=1
+--echo #
+
+let $query= SELECT *
+            FROM
+              t1,t2
+            WHERE
+              t1.a >= 2 AND t2.c >= 1 AND
+              t1.b=t2.b order by t2.c limit 5;
+
+set use_sort_nest=0;
+eval EXPLAIN $query;
+eval $query;
+
+set use_sort_nest= 1;
+eval EXPLAIN $query;
+eval $query;
+drop table t1,t2;
+
 
 set use_sort_nest= @save_use_sort_nest;
