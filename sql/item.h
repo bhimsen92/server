@@ -6515,7 +6515,8 @@ public:
       return TRUE;
     return (this->*processor)(arg);
   }
-  Item *transform(THD *thd, Item_transformer transformer,
+  // TODO:varun need to enable this
+  /*Item *transform(THD *thd, Item_transformer transformer,
                   bool transform_subquery, uchar *arg)
   {
     if (transform_subquery)
@@ -6529,7 +6530,7 @@ public:
       }
     }
     return this;
-  }
+  }*/
   virtual Item *safe_charset_converter(THD *thd, CHARSET_INFO *tocs);
   void split_sum_func2_example(THD *thd,  Ref_ptr_array ref_pointer_array,
                                List<Item> &fields, uint flags)
