@@ -372,7 +372,8 @@ public:
   const char *func_name() const { return "<in_optimizer>"; }
   Item_cache **get_cache() { return &cache; }
   void keep_top_level_cache();
-  Item *transform(THD *thd, Item_transformer transformer, uchar *arg);
+  Item *transform(THD *thd, Item_transformer transformer,
+                  bool transform_subquery, uchar *arg);
   virtual Item *expr_cache_insert_transformer(THD *thd, uchar *unused);
   bool is_expensive_processor(void *arg);
   bool is_expensive();
@@ -3000,7 +3001,8 @@ public:
   bool top_level() { return abort_on_null; }
   void copy_andor_arguments(THD *thd, Item_cond *item);
   bool walk(Item_processor processor, bool walk_subquery, void *arg);
-  Item *transform(THD *thd, Item_transformer transformer, uchar *arg);
+  Item *transform(THD *thd, Item_transformer transformer,
+                  bool transform_subquery, uchar *arg);
   void traverse_cond(Cond_traverser, void *arg, traverse_order order);
   void neg_arguments(THD *thd);
   Item* propagate_equal_fields(THD *, const Context &, COND_EQUAL *);
@@ -3181,7 +3183,8 @@ public:
                       SARGABLE_PARAM **sargables);
   SEL_TREE *get_mm_tree(RANGE_OPT_PARAM *param, Item **cond_ptr);
   bool walk(Item_processor processor, bool walk_subquery, void *arg);
-  Item *transform(THD *thd, Item_transformer transformer, uchar *arg);
+  Item *transform(THD *thd, Item_transformer transformer,
+                  bool transform_subquery, uchar *arg);
   virtual void print(String *str, enum_query_type query_type);
   const Type_handler *compare_type_handler() const { return m_compare_handler; }
   CHARSET_INFO *compare_collation() const { return m_compare_collation; }

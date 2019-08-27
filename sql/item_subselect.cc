@@ -715,7 +715,7 @@ bool Item_subselect::walk(Item_processor processor, bool walk_subquery,
 
 
 Item* Item_subselect::transform(THD *thd, Item_transformer transformer,
-                               uchar *arg)
+                                bool transform_subquery, uchar *arg)
 {
   if (!(unit->uncacheable & ~UNCACHEABLE_DEPENDENT) && engine->is_executed() &&
       !unit->describe)
@@ -739,47 +739,50 @@ Item* Item_subselect::transform(THD *thd, Item_transformer transformer,
       if set to TRUE we would change the inner contents of the
       subquery also.
   */
-  /*
-  for (SELECT_LEX *lex= unit->first_select(); lex; lex= lex->next_select())
+  if (transform_subquery)
   {
-    List_iterator<Item> it(lex->item_list);
-    Item *item, *new_item;
-    ORDER *order;
+    for (SELECT_LEX *lex= unit->first_select(); lex; lex= lex->next_select())
+    {
+      List_iterator<Item> it(lex->item_list);
+      Item *item, *new_item;
+      ORDER *order;
 
-    if (lex->where)
-    {
-      lex->where= (lex->where)->transform(thd, transformer, arg);
-      lex->where->update_used_tables();
-    }
-    if (lex->having)
-    {
-      lex->having= (lex->having)->transform(thd, transformer, arg);
-      lex->having->update_used_tables();
-    }
-
-    while ((item=it++))
-    {
-      if ((new_item= item->transform(thd, transformer, arg)) != item)
+      if (lex->where)
       {
-        new_item->name= item->name;
-        thd->change_item_tree(it.ref(), new_item);
-        it.replace(new_item);
+        lex->where= (lex->where)->transform(thd, transformer, TRUE, arg);
+        lex->where->update_used_tables();
       }
-      new_item->update_used_tables();
-    }
+      if (lex->having)
+      {
+        lex->having= (lex->having)->transform(thd, transformer, TRUE, arg);
+        lex->having->update_used_tables();
+      }
 
-    for (order= lex->order_list.first ; order; order= order->next)
-    {
-      *order->item= (*order->item)->transform(thd, transformer, arg);
-      (*order->item)->update_used_tables();
-    }
+      while ((item=it++))
+      {
+        if ((new_item= item->transform(thd, transformer, TRUE, arg)) != item)
+        {
+          new_item->name= item->name;
+          thd->change_item_tree(it.ref(), new_item);
+          it.replace(new_item);
+        }
+        new_item->update_used_tables();
+      }
 
-    for (order= lex->group_list.first ; order; order= order->next)
-    {
-      *order->item= (*order->item)->transform(thd, transformer, arg);
-      (*order->item)->update_used_tables();
+      for (order= lex->order_list.first ; order; order= order->next)
+      {
+        *order->item= (*order->item)->transform(thd, transformer,
+                                                TRUE, arg);
+        (*order->item)->update_used_tables();
+      }
+
+      for (order= lex->group_list.first ; order; order= order->next)
+      {
+        *order->item= (*order->item)->transform(thd, transformer, TRUE, arg);
+        (*order->item)->update_used_tables();
+      }
     }
-  }*/
+  }
 
   return (this->*transformer)(thd, arg);
 }

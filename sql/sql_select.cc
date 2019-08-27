@@ -3852,7 +3852,7 @@ bool JOIN::setup_subquery_caches()
     JOIN_TAB *tab;
     if (conds &&
         !(conds= conds->transform(thd, &Item::expr_cache_insert_transformer,
-                                  NULL)))
+                                  FALSE, NULL)))
       DBUG_RETURN(TRUE);
     for (tab= first_linear_tab(this, WITH_BUSH_ROOTS, WITHOUT_CONST_TABLES);
          tab; tab= next_linear_tab(this, tab, WITH_BUSH_ROOTS))
@@ -3861,20 +3861,20 @@ bool JOIN::setup_subquery_caches()
           !(tab->select_cond=
             tab->select_cond->transform(thd,
                                         &Item::expr_cache_insert_transformer,
-                                        NULL)))
+                                        FALSE, NULL)))
 	DBUG_RETURN(TRUE);
       if (tab->cache_select && tab->cache_select->cond)
         if (!(tab->cache_select->cond=
               tab->cache_select->
               cond->transform(thd, &Item::expr_cache_insert_transformer,
-                              NULL)))
+                              FALSE, NULL)))
           DBUG_RETURN(TRUE);
     }
 
     if (having &&
         !(having= having->transform(thd,
                                     &Item::expr_cache_insert_transformer,
-                                    NULL)))
+                                    FALSE, NULL)))
       DBUG_RETURN(TRUE);
 
     if (tmp_having)
@@ -3883,7 +3883,7 @@ bool JOIN::setup_subquery_caches()
       if (!(tmp_having= 
             tmp_having->transform(thd,
                                   &Item::expr_cache_insert_transformer,
-                                  NULL)))
+                                  FALSE, NULL)))
 	DBUG_RETURN(TRUE);
     }
   }
@@ -3898,7 +3898,7 @@ bool JOIN::setup_subquery_caches()
       Item *new_item;
       if (!(new_item=
             item->transform(thd, &Item::expr_cache_insert_transformer,
-                            NULL)))
+                            FALSE, NULL)))
         DBUG_RETURN(TRUE);
       if (new_item != item)
       {
@@ -3910,7 +3910,7 @@ bool JOIN::setup_subquery_caches()
       if (!(*tmp_group->item=
             (*tmp_group->item)->transform(thd,
                                           &Item::expr_cache_insert_transformer,
-                                          NULL)))
+                                          FALSE, NULL)))
         DBUG_RETURN(TRUE);
     }
   }
@@ -3921,7 +3921,7 @@ bool JOIN::setup_subquery_caches()
       if (!(*ord->item=
             (*ord->item)->transform(thd,
                                     &Item::expr_cache_insert_transformer,
-                                    NULL)))
+                                    FALSE, NULL)))
 	DBUG_RETURN(TRUE);
     }
   }
@@ -16063,7 +16063,7 @@ COND* substitute_for_best_equal_field(THD *thd, JOIN_TAB *context_tab,
       {
         REPLACE_EQUAL_FIELD_ARG arg= {item_equal, context_tab};
         if (!(cond= cond->transform(thd, &Item::replace_equal_field,
-                                    (uchar *) &arg)))
+                                    FALSE, (uchar *) &arg)))
           return 0;
       }
       cond_equal= cond_equal->upper_levels;

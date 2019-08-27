@@ -234,7 +234,8 @@ public:
   virtual void reset_value_registration() {}
   enum_parsing_place place() { return parsing_place; }
   bool walk(Item_processor processor, bool walk_subquery, void *arg);
-  Item* transform(THD *thd, Item_transformer transformer, uchar *arg);
+  Item* transform(THD *thd, Item_transformer transformer,
+                  bool transform_subquery, uchar *arg);
   bool excl_dep_on_nest(table_map tab_map)
   {
     if (const_item() || !(used_tables() & ~tab_map))

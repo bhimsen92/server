@@ -585,7 +585,8 @@ bool Item::cleanup_processor(void *arg)
     pointer to newly allocated item is returned.
 */
 
-Item* Item::transform(THD *thd, Item_transformer transformer, uchar *arg)
+Item* Item::transform(THD *thd, Item_transformer transformer,
+                      bool transform_subquery, uchar *arg)
 {
   DBUG_ASSERT(!thd->stmt_arena->is_stmt_prepare());
 
@@ -8011,13 +8012,15 @@ void Item_ref::cleanup()
     @retval NULL  Out of memory error
 */
 
-Item* Item_ref::transform(THD *thd, Item_transformer transformer, uchar *arg)
+Item* Item_ref::transform(THD *thd, Item_transformer transformer,
+                          bool transform_subquery,uchar *arg)
 {
   DBUG_ASSERT(!thd->stmt_arena->is_stmt_prepare());
   DBUG_ASSERT((*ref) != NULL);
 
   /* Transform the object we are referencing. */
-  Item *new_item= (*ref)->transform(thd, transformer, arg);
+  Item *new_item= (*ref)->transform(thd, transformer,
+                                    transform_subquery, arg);
   if (!new_item)
     return NULL;
 
@@ -9354,7 +9357,7 @@ table_map Item_default_value::used_tables() const
 */ 
 
 Item *Item_default_value::transform(THD *thd, Item_transformer transformer,
-                                    uchar *args)
+                                    bool transform_subquery, uchar *args)
 {
   DBUG_ASSERT(!thd->stmt_arena->is_stmt_prepare());
 
@@ -9365,7 +9368,8 @@ Item *Item_default_value::transform(THD *thd, Item_transformer transformer,
   if (!arg)
     return 0;
 
-  Item *new_item= arg->transform(thd, transformer, args);
+  Item *new_item= arg->transform(thd, transformer,
+                                 transform_subquery, args);
   if (!new_item)
     return 0;
 

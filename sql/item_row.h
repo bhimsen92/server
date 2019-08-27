@@ -119,7 +119,8 @@ public:
       return true;
     return (this->*processor)(arg);
   }
-  Item *transform(THD *thd, Item_transformer transformer, uchar *arg);
+  Item *transform(THD *thd, Item_transformer transformer,
+                  bool transform_subquery, uchar *arg);
   bool eval_not_null_tables(void *opt_arg);
 
   uint cols() const { return arg_count; }

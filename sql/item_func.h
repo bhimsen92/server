@@ -206,7 +206,8 @@ public:
     else
       max_length= (uint32) max_result_length;
   }
-  Item *transform(THD *thd, Item_transformer transformer, uchar *arg);
+  Item *transform(THD *thd, Item_transformer transformer,
+                  bool transform_subquery, uchar *arg);
   Item* compile(THD *thd, Item_analyzer analyzer, uchar **arg_p,
                 Item_transformer transformer, uchar *arg_t);
   void traverse_cond(Cond_traverser traverser,

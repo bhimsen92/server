@@ -9682,6 +9682,7 @@ void st_select_lex::pushdown_cond_into_where_clause(THD *thd, Item *cond,
     if (cond_over_partition_fields)
       cond_over_partition_fields= cond_over_partition_fields->transform(thd,
                                 &Item::grouping_field_transformer_for_where,
+                                FALSE,
                                 (uchar*) this);
     if (cond_over_partition_fields)
     {
@@ -9696,7 +9697,7 @@ void st_select_lex::pushdown_cond_into_where_clause(THD *thd, Item *cond,
   if (!join->group_list && !with_sum_func)
   {
     cond=
-      cond->transform(thd, transformer, arg);
+      cond->transform(thd, transformer, FALSE, arg);
     if (cond)
     {
       cond->walk(
@@ -9723,6 +9724,7 @@ void st_select_lex::pushdown_cond_into_where_clause(THD *thd, Item *cond,
   if (cond_over_grouping_fields)
     cond_over_grouping_fields= cond_over_grouping_fields->transform(thd,
                             &Item::grouping_field_transformer_for_where,
+                            FALSE,
                             (uchar*) this);
 
   if (cond_over_grouping_fields)
@@ -9890,7 +9892,7 @@ st_select_lex::build_pushable_cond_for_having_pushdown(THD *thd, Item *cond)
   {
     Item *result= cond->transform(thd,
                                   &Item::multiple_equality_transformer,
-                                  (uchar *)this);
+                                  FALSE, (uchar *)this);
     if (!result)
       return true;
     if (result->type() == Item::COND_ITEM &&
@@ -9938,7 +9940,7 @@ st_select_lex::build_pushable_cond_for_having_pushdown(THD *thd, Item *cond)
       {
         Item *result= item->transform(thd,
                                       &Item::multiple_equality_transformer,
-                                      (uchar *)item);
+                                      FALSE, (uchar *)item);
 
         if (!result)
           return true;
@@ -10265,7 +10267,7 @@ Item *st_select_lex::pushdown_from_having_into_where(THD *thd, Item *having)
   {
     item= item->transform(thd,
                           &Item::field_transformer_for_having_pushdown,
-                          (uchar *)this);
+                          FALSE, (uchar *)this);
 
     if (item->walk(&Item:: cleanup_processor, 0, STOP_PTR) ||
         item->fix_fields(thd, NULL))

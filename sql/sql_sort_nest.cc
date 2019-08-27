@@ -82,7 +82,7 @@ void substitute_base_with_nest_items(JOIN *join)
   while ((item= it++))
   {
     if ((new_item= item->transform(thd,
-                                   &Item::replace_with_nest_items,
+                                   &Item::replace_with_nest_items, TRUE,
                                    (uchar *) &arg)) != item)
     {
       new_item->name= item->name;
@@ -96,7 +96,7 @@ void substitute_base_with_nest_items(JOIN *join)
   {
     (*ord->item)= (*ord->item)->transform(thd,
                                           &Item::replace_with_nest_items,
-                                          (uchar *) &arg);
+                                          TRUE, (uchar *) &arg);
     (*ord->item)->update_used_tables();
   }
 
@@ -113,7 +113,7 @@ void substitute_base_with_nest_items(JOIN *join)
       {
         item= tab->ref.items[keypart]->transform(thd,
                                                  &Item::replace_with_nest_items,
-                                                 (uchar *) &arg);
+                                                 TRUE, (uchar *) &arg);
         if (item != tab->ref.items[keypart])
         {
           tab->ref.items[keypart]= item;
@@ -133,7 +133,7 @@ void substitute_base_with_nest_items(JOIN *join)
     {
       item= (*tab->on_expr_ref)->transform(thd,
                                            &Item::replace_with_nest_items,
-                                           (uchar *) &arg);
+                                           TRUE, (uchar *) &arg);
       *tab->on_expr_ref= item;
       (*tab->on_expr_ref)->update_used_tables();
     }
@@ -145,7 +145,7 @@ void substitute_base_with_nest_items(JOIN *join)
   Item *conds= join->conds;
   if (conds)
   {
-    conds= conds->transform(thd, &Item::replace_with_nest_items,
+    conds= conds->transform(thd, &Item::replace_with_nest_items, TRUE,
                             (uchar *) &arg);
     conds->update_used_tables();
   }
@@ -172,7 +172,7 @@ void substitutions_for_sjm_lookup(JOIN *join, JOIN_TAB *sjm_tab)
     Item *left_expr= emb_sj_nest->sj_subq_pred->left_expr;
     REPLACE_NEST_FIELD_ARG arg= {join};
     left_expr= left_expr->transform(thd, &Item::replace_with_nest_items,
-                                    (uchar *)&arg);
+                                    TRUE, (uchar *)&arg);
     left_expr->update_used_tables();
     emb_sj_nest->sj_subq_pred->left_expr= left_expr;
   }

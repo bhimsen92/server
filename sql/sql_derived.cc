@@ -1462,7 +1462,7 @@ bool pushdown_cond_for_derived(THD *thd, Item *cond, TABLE_LIST *derived)
     remaining_cond=
       remaining_cond->transform(thd,
                                 &Item::derived_field_transformer_for_having,
-                                (uchar *) sl);
+                                FALSE, (uchar *) sl);
     if (!remaining_cond)
       continue;
 

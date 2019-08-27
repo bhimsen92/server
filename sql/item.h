@@ -1819,7 +1819,8 @@ public:
     return (this->*processor)(arg);
   }
 
-  virtual Item* transform(THD *thd, Item_transformer transformer, uchar *arg);
+  virtual Item* transform(THD *thd, Item_transformer transformer,
+                          bool transform_subquery, uchar *arg);
 
   /*
     This function performs a generic "compilation" of the Item tree.
@@ -2463,7 +2464,8 @@ protected:
     }
     return false;
   }
-  bool transform_args(THD *thd, Item_transformer transformer, uchar *arg);
+  bool transform_args(THD *thd, Item_transformer transformer,
+                      bool transform_subquery, uchar *arg);
   void propagate_equal_fields(THD *, const Item::Context &, COND_EQUAL *);
   bool excl_dep_on_table(table_map tab_map)
   {
@@ -5197,7 +5199,8 @@ public:
     else
       return FALSE;
   }
-  Item* transform(THD *thd, Item_transformer, uchar *arg);
+  Item* transform(THD *thd, Item_transformer,
+                  bool transform_subquery, uchar *arg);
   Item* compile(THD *thd, Item_analyzer analyzer, uchar **arg_p,
                 Item_transformer transformer, uchar *arg_t);
   bool enumerate_field_refs_processor(void *arg)
@@ -6201,7 +6204,8 @@ public:
       (this->*processor)(args);
   }
 
-  Item *transform(THD *thd, Item_transformer transformer, uchar *args);
+  Item *transform(THD *thd, Item_transformer transformer,
+                  bool transform_subquery, uchar *args);
 };
 
 /**
@@ -6511,21 +6515,21 @@ public:
       return TRUE;
     return (this->*processor)(arg);
   }
-  /*
-    TODO(varun) enable this when we add a parameter transform_subquery
-    to the transform function
-  */
-  /*
-  Item *transform(THD *thd, Item_transformer transformer, uchar *arg)
+  Item *transform(THD *thd, Item_transformer transformer,
+                  bool transform_subquery, uchar *arg)
   {
-    if (example)
+    if (transform_subquery)
     {
-      Item *new_item= example->transform(thd, transformer, arg);
-      if (new_item != example)
-        setup(thd, new_item);
+      if (example)
+      {
+        Item *new_item= example->transform(thd, transformer,
+                                           transform_subquery, arg);
+        if (new_item != example)
+          setup(thd, new_item);
+      }
     }
     return this;
-  }*/
+  }
   virtual Item *safe_charset_converter(THD *thd, CHARSET_INFO *tocs);
   void split_sum_func2_example(THD *thd,  Ref_ptr_array ref_pointer_array,
                                List<Item> &fields, uint flags)
