@@ -122,7 +122,7 @@ static bool best_extension_by_limited_search(JOIN *join,
                                              double read_time, uint depth,
                                              uint prune_level,
                                              uint use_cond_selectivity,
-                                             table_map previous_tables,
+                                             table_map sort_nest_tables,
                                              bool nest_created,
                                              double cardinality,
                                              bool limit_applied_to_nest);
@@ -8732,14 +8732,14 @@ greedy_search(JOIN      *join,
   do {
     /* Find the extension of the current QEP with the lowest cost */
     join->best_read= DBL_MAX;
-    table_map previous_tables= 0;
+    table_map sort_nest_tables= 0;
     if (best_extension_by_limited_search(join, remaining_tables, idx,
                                          record_count, read_time,
                                          search_depth,
                                          (join->sort_nest_possible ? 0 :
                                           prune_level),
                                          use_cond_selectivity,
-                                         previous_tables, FALSE,
+                                         sort_nest_tables, FALSE,
                                          cardinality, FALSE))
       DBUG_RETURN(TRUE);
     /*
@@ -9444,6 +9444,9 @@ double table_cond_selectivity(JOIN *join, uint idx, JOIN_TAB *s,
                           (values: 0 = EXHAUSTIVE, 1 = PRUNE_BY_TIME_OR_ROWS)
   @param use_cond_selectivity  specifies how the selectivity of the conditions
                           pushed to a table should be taken into account
+  @param sort_nest_tables set of tables that satify the ORDER BY clause
+                          If ORDER BY clause is not satisfield it contains
+                          set of all tables in the prefix
   @param nest_created     set to TRUE if a prefix join order satisfied
                           the ORDER BY clause and we can add a sort-nest
                           on the found prefix
@@ -9470,7 +9473,7 @@ best_extension_by_limited_search(JOIN      *join,
                                  uint      search_depth,
                                  uint      prune_level,
                                  uint      use_cond_selectivity,
-                                 table_map previous_tables,
+                                 table_map sort_nest_tables,
                                  bool nest_created,
                                  double cardinality,
                                  bool limit_applied_to_nest)
@@ -9538,7 +9541,7 @@ best_extension_by_limited_search(JOIN      *join,
         trace_plan_prefix(join, idx, remaining_tables);
         trace_one_table.add_table_name(s);
         if (nest_created)
-          trace_sort_nest(join, idx, previous_tables);
+          trace_sort_nest(join, idx, sort_nest_tables);
       }
 
       /* Find the best access method from 's' to the current partial plan */
@@ -9659,7 +9662,7 @@ best_extension_by_limited_search(JOIN      *join,
         if (!nest_created && !join->emb_sjm_nest && join->order &&
             nest_allow && join->sort_nest_possible &&
             !join->disable_sort_nest &&
-            check_join_prefix_contains_ordering(join, s, previous_tables))
+            check_join_prefix_contains_ordering(join, s, sort_nest_tables))
         {
           // SORT_NEST branch
           join->positions[idx].sort_nest_operation_here= TRUE;
@@ -9680,7 +9683,7 @@ best_extension_by_limited_search(JOIN      *join,
                                                search_depth - 1,
                                                prune_level,
                                                use_cond_selectivity,
-                                               previous_tables | real_table_bit,
+                                               sort_nest_tables | real_table_bit,
                                                TRUE, cardinality,
                                                limit_applied_to_nest))
             DBUG_RETURN(TRUE);
@@ -9696,8 +9699,8 @@ best_extension_by_limited_search(JOIN      *join,
                                              search_depth - 1,
                                              prune_level,
                                              use_cond_selectivity,
-                                             nest_created ? previous_tables :
-                                             previous_tables | real_table_bit,
+                                             nest_created ? sort_nest_tables :
+                                             sort_nest_tables | real_table_bit,
                                              nest_created, cardinality,
                                              limit_applied_to_nest))
           DBUG_RETURN(TRUE);
