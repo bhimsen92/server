@@ -917,7 +917,8 @@ bool setup_range_scan(JOIN *join, JOIN_TAB *tab, uint idx, double records)
       which was stored in the POSITION object as the fraction which we
       would read would have been applied.
     */
-    tab->quick->records= records;
+    if (records < tab->quick->records)
+      tab->quick->records= records;
     sel->quick= 0;
 
   use_filesort:
