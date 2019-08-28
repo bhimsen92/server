@@ -2554,7 +2554,9 @@ bool instantiate_tmp_table(TABLE *table, KEY *keyinfo,
                            ulonglong options);
 bool open_tmp_table(TABLE *table);
 void setup_tmp_table_column_bitmaps(TABLE *table, uchar *bitmaps);
-double prev_record_reads(POSITION *positions, uint idx, table_map found_ref);
+double prev_record_reads(POSITION *positions, uint idx, table_map found_ref,
+                         table_map sort_nest_tables,
+                         double fraction_output_for_nest);
 void fix_list_after_tbl_changes(SELECT_LEX *new_parent, List<TABLE_LIST> *tlist);
 double get_tmp_table_lookup_cost(THD *thd, double row_count, ulong row_size);
 double get_tmp_table_write_cost(THD *thd, double row_count, ulong row_size);

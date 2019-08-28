@@ -111,7 +111,8 @@ void best_access_path(JOIN *join, JOIN_TAB *s,
                       table_map remaining_tables, uint idx,
                       bool disable_jbuf, double record_count,
                       POSITION *pos, POSITION *loose_scan_pos,
-                      int *index_used, double cardinality);
+                      int *index_used, double cardinality,
+                      table_map sort_nest_tables, bool nest_created);
 static void optimize_straight_join(JOIN *join, table_map join_tables);
 static bool greedy_search(JOIN *join, table_map remaining_tables,
                           uint depth, uint prune_level,
@@ -7229,7 +7230,8 @@ best_access_path(JOIN      *join,
                  double    record_count,
                  POSITION *pos,
                  POSITION *loose_scan_pos,
-                 int *index_used, double cardinality)
+                 int *index_used, double cardinality,
+                 table_map sort_nest_tables, bool nest_created)
 {
   THD *thd= join->thd;
   uint use_cond_selectivity= thd->variables.optimizer_use_condition_selectivity;
@@ -7346,7 +7348,11 @@ best_access_path(JOIN      *join,
               notnull_part|=keyuse->keypart_map;
 
             double tmp2= prev_record_reads(join->positions, idx,
-                                           (found_ref | keyuse->used_tables));
+                                           (found_ref | keyuse->used_tables),
+                                           sort_nest_tables,
+                                           nest_created ?
+                                           join->fraction_output_for_nest :
+                                           1.0);
             if (tmp2 < best_prev_record_reads)
             {
               best_part_found_ref= keyuse->used_tables & ~join->const_table_map;
@@ -7387,7 +7393,10 @@ best_access_path(JOIN      *join,
           Really, there should be records=0.0 (yes!)
           but 1.0 would be probably safer
         */
-        tmp= prev_record_reads(join->positions, idx, found_ref);
+        tmp= prev_record_reads(join->positions, idx, found_ref,
+                               sort_nest_tables,
+                               nest_created ?
+                               join->fraction_output_for_nest : 1.0);
         records= 1.0;
         trace_access_idx.add("access_type", "fulltext")
                         .add("index", keyinfo->name);
@@ -7414,7 +7423,10 @@ best_access_path(JOIN      *join,
           {
             trace_access_idx.add("access_type", "eq_ref")
                             .add("index", keyinfo->name);
-            tmp = prev_record_reads(join->positions, idx, found_ref);
+            tmp = prev_record_reads(join->positions, idx, found_ref,
+                                    sort_nest_tables,
+                                    nest_created ?
+                                    join->fraction_output_for_nest : 1.0);
             records=1.0;
           }
           else
@@ -8568,7 +8580,8 @@ optimize_straight_join(JOIN *join, table_map join_tables)
     }
     /* Find the best access method from 's' to the current partial plan */
     best_access_path(join, s, join_tables, idx, disable_jbuf, record_count,
-                     position, &loose_scan_pos, &index_used, DBL_MAX);
+                     position, &loose_scan_pos, &index_used, DBL_MAX, 0,
+                     FALSE);
 
     /* compute the cost of the new plan extended with 's' */
     record_count= COST_MULT(record_count, position->records_read);
@@ -9548,7 +9561,8 @@ best_extension_by_limited_search(JOIN      *join,
       POSITION loose_scan_pos;
       best_access_path(join, s, remaining_tables, idx, disable_jbuf,
                        record_count, position, &loose_scan_pos,
-                       &index_used, cardinality);
+                       &index_used, cardinality, sort_nest_tables,
+                       nest_created);
 
       /*
         sort_nest_operation_here is set to TRUE here in the special case
@@ -10064,15 +10078,20 @@ cache_record_length_for_nest(JOIN *join,uint idx)
 */
 
 double
-prev_record_reads(POSITION *positions, uint idx, table_map found_ref)
+prev_record_reads(POSITION *positions, uint idx, table_map found_ref,
+                  table_map sort_nest_tables,
+                  double fraction_output_for_nest)
 {
   double found=1.0;
   POSITION *pos_end= positions - 1;
+  bool apply_limit= FALSE;
   for (POSITION *pos= positions + idx - 1; pos != pos_end; pos--)
   {
     if (pos->table->table->map & found_ref)
     {
       found_ref|= pos->ref_depend_map;
+      if (pos->table->table->map & sort_nest_tables)
+        apply_limit= TRUE;
       /* 
         For the case of "t1 LEFT JOIN t2 ON ..." where t2 is a const table 
         with no matching row we will get position[t2].records_read==0. 
@@ -10093,6 +10112,8 @@ prev_record_reads(POSITION *positions, uint idx, table_map found_ref)
         found= COST_MULT(found, pos->records_read);
      }
   }
+  if (apply_limit)
+    found= COST_MULT(found, fraction_output_for_nest);
   return found;
 }
 
@@ -17063,8 +17084,8 @@ void optimize_wo_join_buffering(JOIN *join, uint first_tab, uint last_tab,
     {
       /* Find the best access method that would not use join buffering */
       best_access_path(join, rs, reopt_remaining_tables, i, 
-                       TRUE, rec_count,
-                       &pos, &loose_scan_pos, &index_used, DBL_MAX);
+                       TRUE, rec_count, &pos, &loose_scan_pos,
+                       &index_used, DBL_MAX, 0, FALSE);
     }
     else 
       pos= join->positions[i];
