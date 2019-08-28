@@ -864,7 +864,7 @@ bool index_satisfies_ordering(JOIN_TAB *tab, int index_used)
 }
 
 
-bool setup_range_scan(JOIN *join, JOIN_TAB *tab, uint idx)
+bool setup_range_scan(JOIN *join, JOIN_TAB *tab, uint idx, double records)
 {
     SQL_SELECT *sel= NULL;
     Item **sargable_cond= get_sargable_cond(join, tab->table);
@@ -912,6 +912,12 @@ bool setup_range_scan(JOIN *join, JOIN_TAB *tab, uint idx)
       }
     }
     tab->quick= sel->quick;
+    /*
+      Fix for explain, the records here should be set to the value
+      which was stored in the POSITION object as the fraction which we
+      would read would have been applied.
+    */
+    tab->quick->records= records;
     sel->quick= 0;
 
   use_filesort:
@@ -939,7 +945,8 @@ void setup_index_use_for_ordering(JOIN *join, int index_no)
     if (cur_pos->table->table->quick_keys.is_set(index_no))
     {
       // Range scan
-      (void)setup_range_scan(join, cur_pos->table, index_no);
+      (void)setup_range_scan(join, cur_pos->table, index_no,
+                             cur_pos->records_read);
       sort_nest_info->index_used= -1;
     }
     else

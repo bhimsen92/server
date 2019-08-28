@@ -8709,6 +8709,7 @@ greedy_search(JOIN      *join,
   if (!join->disable_sort_nest && join->sort_nest_allowed())
   {
     cardinality= join->join_record_count;
+    set_if_bigger(cardinality, 1);
     join->fraction_output_for_nest= join->select_limit < cardinality ?
                                     (join->select_limit / cardinality) :
                                      1.0;

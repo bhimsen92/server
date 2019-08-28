@@ -2206,7 +2206,7 @@ int get_best_index_for_order_by_limit(JOIN_TAB *tab, double *read_time,
                                       int index_used, uint idx);
 bool check_if_join_buffering_needed(JOIN *join, JOIN_TAB *tab);
 bool index_satisfies_ordering(JOIN_TAB *tab, int index_used);
-bool setup_range_scan(JOIN *join, JOIN_TAB *tab, uint idx);
+bool setup_range_scan(JOIN *join, JOIN_TAB *tab, uint idx, double records);
 void setup_index_use_for_ordering(JOIN *join, int index_no);
 int get_index_on_table(JOIN_TAB *tab);
 void resetup_access_for_ordering(JOIN_TAB* tab, int idx);
