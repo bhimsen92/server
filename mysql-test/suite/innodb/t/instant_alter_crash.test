@@ -183,3 +183,13 @@ DROP TABLE t1,t2;
 --list_files $MYSQLD_DATADIR/test
 
 SET GLOBAL innodb_purge_rseg_truncate_frequency=@saved_frequency;
+
+
+--echo #
+--echo # MDEV-20066: Assertion `0' failed in row_sel_get_clust_rec_for_mysql
+--echo #
+CREATE TABLE t1 (a INT PRIMARY KEY) ENGINE=InnoDB;
+ALTER TABLE t1 ADD COLUMN (b INT, c INT, d INT, e INT NOT NULL DEFAULT 0);
+ALTER TABLE t1 ADD UNIQUE INDEX(e);
+ALTER TABLE t1 DROP b, DROP c, DROP d, DROP e;
+DROP TABLE t1;
