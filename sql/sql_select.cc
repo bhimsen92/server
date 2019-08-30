@@ -27735,7 +27735,7 @@ void rewrite_expr_with_vfieds(THD *thd, Name_resolution_context *context, Item *
     if (!clone)
       break;
 
-    Item::Subst_expr_prm prm(Item::Subst_expr_prm {thd, &clone, *vfield});
+    Item::Subst_expr_prm prm {thd, &clone, *vfield};
     int replaced = (*select_where)->substitute_expr_with_vcol(&prm);
     if (replaced)
     {
