@@ -27709,15 +27709,16 @@ void JOIN::optimize_vfields_expressions()
                                &cur_table->on_expr);
     }
 
-    Item *select_where = cur_select_lex->where;
     // no where or no tables
-    if (!select_where)
+    if (!cur_select_lex->where)
       continue;
 
     // perform rewrites in all subselects
-    select_where->walk(&Item::rewrite_subselects_with_vfields_processor,
-                       true, NULL);
-    rewrite_expr_with_vfieds(thd, &(cur_select_lex->context), &select_where);
+    cur_select_lex->where->walk(
+                  &Item::rewrite_subselects_with_vfields_processor, true, NULL);
+
+    rewrite_expr_with_vfieds(thd, &(cur_select_lex->context),
+                             &cur_select_lex->where);
   }
 
   if (arena)
