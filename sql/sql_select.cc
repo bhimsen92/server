@@ -1119,7 +1119,7 @@ JOIN::prepare(TABLE_LIST *tables_init,
   Json_writer_array trace_steps(thd, "steps");
 
   // simple check that we got usable conds
-  dbug_print_item(conds);
+  //dbug_print_item(conds);
 
   if (select_lex->handle_derived(thd->lex, DT_PREPARE))
     DBUG_RETURN(-1);
@@ -27691,6 +27691,9 @@ void JOIN::cache_const_exprs()
 
 void JOIN::optimize_vfields_expressions()
 {
+  Query_arena backup;
+  Query_arena *arena= thd->activate_stmt_arena_if_needed(&backup);
+
   for (SELECT_LEX *cur_select_lex = select_lex; cur_select_lex; cur_select_lex = cur_select_lex->next_select())
   {
     for (TABLE_LIST *cur_table = cur_select_lex->table_list.first; cur_table; cur_table = cur_table->next_local)
@@ -27711,6 +27714,9 @@ void JOIN::optimize_vfields_expressions()
     select_where->walk(&Item::rewrite_subselects_with_vfields_processor, true, NULL);
     rewrite_expr_with_vfieds(thd, &(cur_select_lex->context), &select_where);
   }
+
+  if (arena)
+    thd->restore_active_arena(arena, &backup);
 }
 
 void rewrite_expr_with_vfieds(THD *thd, Name_resolution_context *context, Item **select_where)
@@ -27735,7 +27741,9 @@ void rewrite_expr_with_vfieds(THD *thd, Name_resolution_context *context, Item *
     {
       Item *new_where = new (thd->mem_root) Item_cond_and(thd, *select_where, clone);
       new_where->fix_fields(thd, &new_where);
-      *select_where = new_where;
+
+      thd->change_item_tree(select_where, new_where);
+//      *select_where = new_where;
     }
   }
 }

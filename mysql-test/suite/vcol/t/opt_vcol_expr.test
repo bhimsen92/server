@@ -20,6 +20,12 @@ insert into t2 values
   (17, 60, default),
   (1, 60, default);
 
+
+#prepare stmt from "select * from t where a+b/2 = 2";
+#execute stmt;
+#execute stmt;
+
+
 explain extended select * from t where a+b/2=10;
 explain extended select * from t where v=10;
 explain extended select * from t where a+b/11=10;
@@ -38,3 +44,29 @@ explain extended (select * from t inner join t1 on a>sqrt(a1*a1+b1*b1)) union (s
 
 
 drop table t, t1, t2;
+
+CREATE or replace TABLE t1 (f1 int,
+  gc_int int AS (f1 + 1) STORED,
+  gc_date DATE AS (f1 + 1) STORED,
+  KEY gc_int_idx(gc_int),
+  KEY gc_date_idx(gc_date)
+);
+
+INSERT INTO t1(f1) VALUES
+  (030303),(040404),
+  (050505),(060606),
+  (010101),(020202),
+  (030303),(040404),
+  (050505),(060606),
+  (010101),(020202),
+  (090909),(101010),
+  (010101),(020202),
+  (070707),(080808);
+
+SELECT * FROM t1;
+
+SELECT * FROM t1 WHERE f1 + 1 > 070707;
+EXPLAIN EXTENDED SELECT * FROM t1 WHERE f1 + 1 > 070707;
+SHOW WARNINGS;
+
+drop table t1;
