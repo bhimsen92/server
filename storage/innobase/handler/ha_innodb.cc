@@ -20100,10 +20100,6 @@ static TABLE* innodb_find_table_for_vc(THD* thd, dict_table_t* table)
 					    "SIGNAL got_no_such_table"))););
 
 	if (THDVAR(thd, background_thread)) {
-		/* Purge thread acquires dict_sys.latch while
-		processing undo log record. Release it
-		before acquiring MDL on the table. */
-		rw_lock_s_unlock(&dict_sys.latch);
 		return innodb_acquire_mdl(thd, table);
 	} else {
 		if (table->vc_templ->mysql_table_query_id
