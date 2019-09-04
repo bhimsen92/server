@@ -270,7 +270,7 @@ Sql_cmd_truncate_table::handler_truncate(THD *thd, TABLE_LIST *table_ref,
 
 bool Sql_cmd_truncate_table::lock_table(THD *thd, TABLE_LIST *table_ref,
                                         bool *hton_can_recreate,
-                                        enum legacy_db_type* db_type)
+                                        enum legacy_db_type *db_type)
 {
   handlerton *hton;
   bool versioned;
@@ -322,7 +322,7 @@ bool Sql_cmd_truncate_table::lock_table(THD *thd, TABLE_LIST *table_ref,
     versioned= share->versioned;
     sequence= share->table_type == TABLE_TYPE_SEQUENCE;
     hton= share->db_type();
-    if (db_type) *db_type= hton->db_type;
+    if (db_type && hton != view_pseudo_hton) *db_type= hton->db_type;
 
     tdc_release_share(share);
 
