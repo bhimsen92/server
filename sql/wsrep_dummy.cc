@@ -138,3 +138,6 @@ void wsrep_commit_ordered(THD* )
 
 my_bool wsrep_thd_is_applying(const THD*)
 { return 0;}
+
+ulong wsrep_OSU_method_get(const THD*)
+{ return 0;}

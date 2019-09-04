@@ -84,6 +84,7 @@ extern struct wsrep_service_st {
   my_bool                     (*wsrep_get_debug_func)();
   void                        (*wsrep_commit_ordered_func)(MYSQL_THD thd);
   my_bool                     (*wsrep_thd_is_applying_func)(const MYSQL_THD thd);
+  ulong                       (*wsrep_OSU_method_get_func)(const MYSQL_THD thd);
 } *wsrep_service;
 
 #define MYSQL_SERVICE_WSREP_INCLUDED
@@ -124,7 +125,7 @@ extern struct wsrep_service_st {
 #define wsrep_get_debug() wsrep_service->wsrep_get_debug_func()
 #define wsrep_commit_ordered(T) wsrep_service->wsrep_commit_ordered_func(T)
 #define wsrep_thd_is_applying(T) wsrep_service->wsrep_thd_is_applying_func(T)
-
+#define wsrep_OSU_method_get(T) wsrep_service->wsrep_OSU_method_get_func(T)
 #else
 
 #define MYSQL_SERVICE_WSREP_STATIC_INCLUDED
@@ -216,6 +217,6 @@ extern "C" my_bool wsrep_get_debug();
 
 extern "C" void wsrep_commit_ordered(MYSQL_THD thd);
 extern "C" my_bool wsrep_thd_is_applying(const MYSQL_THD thd);
-
+extern "C" ulong wsrep_OSU_method_get(const MYSQL_THD thd);
 #endif
 #endif /* MYSQL_SERVICE_WSREP_INCLUDED */

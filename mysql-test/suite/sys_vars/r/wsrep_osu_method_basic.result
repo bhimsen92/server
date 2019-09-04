@@ -26,10 +26,18 @@ SET @@global.wsrep_osu_method=RSU;
 SELECT @@global.wsrep_osu_method;
 @@global.wsrep_osu_method
 RSU
+SET @@global.wsrep_osu_method=STRICT;
+SELECT @@global.wsrep_osu_method;
+@@global.wsrep_osu_method
+STRICT
 SET @@global.wsrep_osu_method="RSU";
 SELECT @@global.wsrep_osu_method;
 @@global.wsrep_osu_method
 RSU
+SET @@global.wsrep_osu_method="STRICT";
+SELECT @@global.wsrep_osu_method;
+@@global.wsrep_osu_method
+STRICT
 SET @@global.wsrep_osu_method=default;
 SELECT @@global.wsrep_osu_method;
 @@global.wsrep_osu_method
@@ -38,23 +46,31 @@ SET @@global.wsrep_osu_method=1;
 SELECT @@global.wsrep_osu_method;
 @@global.wsrep_osu_method
 RSU
-
-# invalid values
-SET @@global.wsrep_osu_method=4;
-ERROR 42000: Variable 'wsrep_OSU_method' can't be set to the value of '4'
+SET @@global.wsrep_osu_method=2;
 SELECT @@global.wsrep_osu_method;
 @@global.wsrep_osu_method
-RSU
+STRICT
+SET @@global.wsrep_osu_method=0;
+SELECT @@global.wsrep_osu_method;
+@@global.wsrep_osu_method
+TOI
+
+# invalid values
+SET @@global.wsrep_osu_method=3;
+ERROR 42000: Variable 'wsrep_OSU_method' can't be set to the value of '3'
+SELECT @@global.wsrep_osu_method;
+@@global.wsrep_osu_method
+TOI
 SET @@global.wsrep_osu_method=NULL;
 ERROR 42000: Variable 'wsrep_OSU_method' can't be set to the value of 'NULL'
 SELECT @@global.wsrep_osu_method;
 @@global.wsrep_osu_method
-RSU
+TOI
 SET @@global.wsrep_osu_method='junk';
 ERROR 42000: Variable 'wsrep_OSU_method' can't be set to the value of 'junk'
 SELECT @@global.wsrep_osu_method;
 @@global.wsrep_osu_method
-RSU
+TOI
 
 # restore the initial value
 SET @@global.wsrep_osu_method = @wsrep_osu_method_global_saved;

@@ -269,7 +269,8 @@ Sql_cmd_truncate_table::handler_truncate(THD *thd, TABLE_LIST *table_ref,
 */
 
 bool Sql_cmd_truncate_table::lock_table(THD *thd, TABLE_LIST *table_ref,
-                                        bool *hton_can_recreate)
+                                        bool *hton_can_recreate,
+                                        enum legacy_db_type* db_type)
 {
   handlerton *hton;
   bool versioned;
@@ -303,6 +304,7 @@ bool Sql_cmd_truncate_table::lock_table(THD *thd, TABLE_LIST *table_ref,
 
     versioned= table->versioned();
     hton= table->file->ht;
+    if (db_type) *db_type= hton->db_type;
     table_ref->mdl_request.ticket= table->mdl_ticket;
   }
   else
@@ -320,6 +322,7 @@ bool Sql_cmd_truncate_table::lock_table(THD *thd, TABLE_LIST *table_ref,
     versioned= share->versioned;
     sequence= share->table_type == TABLE_TYPE_SEQUENCE;
     hton= share->db_type();
+    if (db_type) *db_type= hton->db_type;
 
     tdc_release_share(share);
 
@@ -414,14 +417,28 @@ bool Sql_cmd_truncate_table::truncate_table(THD *thd, TABLE_LIST *table_ref)
   else /* It's not a temporary table. */
   {
     bool hton_can_recreate;
+#ifdef WITH_WSREP
+    enum legacy_db_type db_type;
+#endif
 
 #ifdef WITH_WSREP
     if (WSREP(thd) &&
-        wsrep_to_isolation_begin(thd, table_ref->db.str, table_ref->table_name.str, 0))
-        DBUG_RETURN(TRUE);
-#endif /* WITH_WSREP */
-    if (lock_table(thd, table_ref, &hton_can_recreate))
+	wsrep_to_isolation_begin(thd, table_ref->db.str, table_ref->table_name.str, NULL))
       DBUG_RETURN(TRUE);
+#endif /* WITH_WSREP */
+
+    if (lock_table(thd, table_ref, &hton_can_recreate
+#ifdef WITH_WSREP
+		   , &db_type
+#endif
+                   ))
+      DBUG_RETURN(TRUE);
+
+#ifdef WITH_WSREP
+    if (WSREP(thd) &&
+	!wsrep_should_replicate_ddl(thd, db_type))
+      DBUG_RETURN(TRUE);
+#endif
 
     if (hton_can_recreate)
     {

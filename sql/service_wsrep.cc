@@ -55,7 +55,7 @@ extern "C" const char* wsrep_thd_transaction_state_str(const THD *thd)
 
 extern "C" const char *wsrep_thd_query(const THD *thd)
 {
-  return thd ? thd->query() : NULL;
+  return thd ? thd->query() : "NULL";
 }
 
 extern "C" query_id_t wsrep_thd_transaction_id(const THD *thd)
@@ -269,4 +269,12 @@ extern "C" void wsrep_commit_ordered(THD *thd)
   {
     thd->wsrep_cs().ordered_commit();
   }
+}
+
+extern "C" ulong wsrep_OSU_method_get(const MYSQL_THD thd)
+{
+  if (thd)
+    return(thd->variables.wsrep_OSU_method);
+  else
+    return(global_system_variables.wsrep_OSU_method);
 }

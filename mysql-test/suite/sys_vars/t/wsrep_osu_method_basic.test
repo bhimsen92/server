@@ -22,18 +22,26 @@ SET @@global.wsrep_osu_method=TOI;
 SELECT @@global.wsrep_osu_method;
 SET @@global.wsrep_osu_method=RSU;
 SELECT @@global.wsrep_osu_method;
+SET @@global.wsrep_osu_method=STRICT;
+SELECT @@global.wsrep_osu_method;
 SET @@global.wsrep_osu_method="RSU";
+SELECT @@global.wsrep_osu_method;
+SET @@global.wsrep_osu_method="STRICT";
 SELECT @@global.wsrep_osu_method;
 SET @@global.wsrep_osu_method=default;
 SELECT @@global.wsrep_osu_method;
 # numeric value
 SET @@global.wsrep_osu_method=1;
 SELECT @@global.wsrep_osu_method;
+SET @@global.wsrep_osu_method=2;
+SELECT @@global.wsrep_osu_method;
+SET @@global.wsrep_osu_method=0;
+SELECT @@global.wsrep_osu_method;
 
 --echo
 --echo # invalid values
 --error ER_WRONG_VALUE_FOR_VAR
-SET @@global.wsrep_osu_method=4;
+SET @@global.wsrep_osu_method=3;
 SELECT @@global.wsrep_osu_method;
 --error ER_WRONG_VALUE_FOR_VAR
 SET @@global.wsrep_osu_method=NULL;

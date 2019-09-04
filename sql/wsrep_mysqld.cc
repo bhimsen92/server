@@ -1205,11 +1205,11 @@ static bool wsrep_prepare_key_for_isolation(const char* db,
 }
 
 static bool wsrep_prepare_keys_for_alter_add_fk(const char* child_table_db,
-                                                Alter_info* alter_info,
+                                                const Alter_info* alter_info,
                                                 wsrep_key_arr_t* ka)
 {
   Key *key;
-  List_iterator<Key> key_iterator(alter_info->key_list);
+  List_iterator<Key> key_iterator(const_cast<Alter_info*>(alter_info)->key_list);
   while ((key= key_iterator++))
   {
     if (key->type == Key::FOREIGN_KEY)
@@ -1345,12 +1345,12 @@ wsrep::key wsrep_prepare_key_for_toi(const char* db, const char* table,
 
 wsrep::key_array
 wsrep_prepare_keys_for_alter_add_fk(const char* child_table_db,
-                                    Alter_info* alter_info)
+                                    const Alter_info* alter_info)
 
 {
   wsrep::key_array ret;
   Key *key;
-  List_iterator<Key> key_iterator(alter_info->key_list);
+  List_iterator<Key> key_iterator(const_cast<Alter_info*>(alter_info)->key_list);
   while ((key= key_iterator++))
   {
     if (key->type == Key::FOREIGN_KEY)
@@ -1372,7 +1372,7 @@ wsrep_prepare_keys_for_alter_add_fk(const char* child_table_db,
 wsrep::key_array wsrep_prepare_keys_for_toi(const char* db,
                                             const char* table,
                                             const TABLE_LIST* table_list,
-                                            Alter_info* alter_info)
+                                            const Alter_info* alter_info)
 {
   wsrep::key_array ret;
   if (db || table)
@@ -1621,85 +1621,6 @@ static int wsrep_drop_table_query(THD* thd, uchar** buf, size_t* buf_len)
 /* Forward declarations. */
 int wsrep_create_trigger_query(THD *thd, uchar** buf, size_t* buf_len);
 
-/*
-  Decide if statement should run in TOI.
-
-  Look if table or table_list contain temporary tables. If the
-  statement affects only temporary tables,   statement should not run
-  in TOI. If the table list contains mix of regular and temporary tables
-  (DROP TABLE, OPTIMIZE, ANALYZE), statement should be run in TOI but
-  should be rewritten at later time for replication to contain only
-  non-temporary tables.
- */
-static bool wsrep_can_run_in_toi(THD *thd, const char *db, const char *table,
-                                 const TABLE_LIST *table_list)
-{
-  DBUG_ASSERT(!table || db);
-  DBUG_ASSERT(table_list || db);
-
-  LEX* lex= thd->lex;
-  SELECT_LEX* select_lex= lex->first_select_lex();
-  TABLE_LIST* first_table= select_lex->table_list.first;
-
-  switch (lex->sql_command)
-  {
-  case SQLCOM_CREATE_TABLE:
-    DBUG_ASSERT(!table_list);
-    if (thd->lex->create_info.options & HA_LEX_CREATE_TMP_TABLE)
-    {
-      return false;
-    }
-    return true;
-
-  case SQLCOM_CREATE_VIEW:
-
-    DBUG_ASSERT(!table_list);
-    DBUG_ASSERT(first_table); /* First table is view name */
-    /*
-      If any of the remaining tables refer to temporary table error
-      is returned to client, so TOI can be skipped
-    */
-    for (TABLE_LIST* it= first_table->next_global; it; it= it->next_global)
-    {
-      if (thd->find_temporary_table(it))
-      {
-        return false;
-      }
-    }
-    return true;
-
-  case SQLCOM_CREATE_TRIGGER:
-
-    DBUG_ASSERT(!table_list);
-    DBUG_ASSERT(first_table);
-
-    if (thd->find_temporary_table(first_table))
-    {
-      return false;
-    }
-    return true;
-
-  default:
-    if (table && !thd->find_temporary_table(db, table))
-    {
-      return true;
-    }
-
-    if (table_list)
-    {
-      for (TABLE_LIST* table= first_table; table; table= table->next_global)
-      {
-        if (!thd->find_temporary_table(table->db.str, table->table_name.str))
-        {
-          return true;
-        }
-      }
-    }
-    return !(table || table_list);
-  }
-}
-
-#if UNUSED /* 323f269d4099 (Jan Lindström     2018-07-19) */
 static const char* wsrep_get_query_or_msg(const THD* thd)
 {
   switch(thd->lex->sql_command)
@@ -1715,10 +1636,143 @@ static const char* wsrep_get_query_or_msg(const THD* thd)
         return "SET PASSWORD";
       /* fallthrough */
     default:
-      return thd->query();
+      return wsrep_thd_query(thd);
    }
 }
-#endif //UNUSED
+
+bool wsrep_should_replicate_ddl_iterate(THD* thd, const TABLE_LIST* table_list)
+{
+  if (WSREP(thd))
+  {
+    for (const TABLE_LIST* it= table_list; it; it= it->next_global)
+    {
+      if (!wsrep_should_replicate_ddl(thd, it->table->s->db_type()->db_type))
+        return false;
+    }
+  }
+  return true;
+}
+
+bool wsrep_should_replicate_ddl(THD* thd,
+                                const enum legacy_db_type db_type)
+{
+  if (!(wsrep_OSU_method_get(NULL) == WSREP_OSU_STRICT) || wsrep_OSU_method_get(thd) == WSREP_OSU_STRICT)
+    return true;
+
+  switch (db_type)
+  {
+    case DB_TYPE_INNODB:
+      return true;
+      break;
+    case DB_TYPE_MYISAM:
+      if (wsrep_replicate_myisam)
+        return true;
+      else
+        WSREP_DEBUG("wsrep STRICT OSU failed for %s", wsrep_get_query_or_msg(thd));
+      break;
+    case DB_TYPE_ARIA:
+      /* if (wsrep_replicate_aria) */
+      /* fallthrough */
+    default:
+      WSREP_DEBUG("wsrep STRICT OSU failed for %s", wsrep_get_query_or_msg(thd));
+      break;
+  }
+
+  /* STRICT, treat as error */
+  my_error(ER_GALERA_REPLICATION_NOT_SUPPORTED, MYF(0));
+  push_warning_printf(thd, Sql_condition::WARN_LEVEL_WARN,
+	  ER_ILLEGAL_HA,
+	  "WSREP: wsrep_osu_method=STRICT and storage engine does not support Galera replication.");
+  return false;
+}
+/*
+  Decide if statement should run in TOI.
+
+  Look if table or table_list contain temporary tables. If the
+  statement affects only temporary tables,   statement should not run
+  in TOI. If the table list contains mix of regular and temporary tables
+  (DROP TABLE, OPTIMIZE, ANALYZE), statement should be run in TOI but
+  should be rewritten at later time for replication to contain only
+  non-temporary tables.
+ */
+bool wsrep_can_run_in_toi(THD *thd, const char *db, const char *table,
+                                 const TABLE_LIST *table_list,
+                                 const HA_CREATE_INFO* create_info)
+{
+  DBUG_ASSERT(!table || db);
+  DBUG_ASSERT(table_list || db);
+
+  LEX* lex= thd->lex;
+  SELECT_LEX* select_lex= lex->first_select_lex();
+  const TABLE_LIST* first_table= select_lex->table_list.first;
+
+  switch (lex->sql_command)
+  {
+  case SQLCOM_CREATE_TABLE:
+    if (thd->lex->create_info.options & HA_LEX_CREATE_TMP_TABLE)
+    {
+      return false;
+    }
+    if (!wsrep_should_replicate_ddl(thd, create_info->db_type->db_type))
+    {
+      return false;
+    }
+    return true;
+    break;
+  case SQLCOM_CREATE_VIEW:
+
+    DBUG_ASSERT(!table_list);
+    DBUG_ASSERT(first_table); /* First table is view name */
+    /*
+      If any of the remaining tables refer to temporary table error
+      is returned to client, so TOI can be skipped
+    */
+    for (const TABLE_LIST* it= first_table->next_global; it; it= it->next_global)
+    {
+      if (thd->find_temporary_table(it))
+      {
+        return false;
+      }
+    }
+    return true;
+    break;
+  case SQLCOM_CREATE_TRIGGER:
+
+    DBUG_ASSERT(!table_list);
+    DBUG_ASSERT(first_table);
+
+    if (thd->find_temporary_table(first_table))
+    {
+      return false;
+    }
+    return true;
+    break;
+  case SQLCOM_ALTER_TABLE:
+    if (create_info &&
+        !wsrep_should_replicate_ddl(thd, create_info->db_type->db_type))
+      return false;
+    /* fallthrough */
+  default:
+    if (table && !thd->find_temporary_table(db, table))
+    {
+      return true;
+    }
+
+    if (table_list)
+    {
+      for (const TABLE_LIST* table= first_table; table; table= table->next_global)
+      {
+        if (!thd->find_temporary_table(table->db.str, table->table_name.str))
+        {
+          return true;
+        }
+      }
+    }
+
+    return !(table || table_list);
+    break;
+  }
+}
 
 static int wsrep_create_sp(THD *thd, uchar** buf, size_t* buf_len)
 {
@@ -1825,14 +1879,17 @@ fail:
  */
 static int wsrep_TOI_begin(THD *thd, const char *db, const char *table,
                            const TABLE_LIST* table_list,
-                           Alter_info* alter_info)
+                           const Alter_info* alter_info,
+                           const HA_CREATE_INFO* create_info)
 {
-  DBUG_ASSERT(thd->variables.wsrep_OSU_method == WSREP_OSU_TOI);
+  DBUG_ASSERT(wsrep_OSU_method_get(thd) == WSREP_OSU_TOI ||
+              wsrep_OSU_method_get(thd) == WSREP_OSU_STRICT);
 
   WSREP_DEBUG("TOI Begin");
-  if (wsrep_can_run_in_toi(thd, db, table, table_list) == false)
+
+  if (wsrep_can_run_in_toi(thd, db, table, table_list, create_info) == false)
   {
-    WSREP_DEBUG("No TOI for %s", WSREP_QUERY(thd));
+    WSREP_DEBUG("No TOI for %s", wsrep_get_query_or_msg(thd));
     return 1;
   }
 
@@ -1842,6 +1899,7 @@ static int wsrep_TOI_begin(THD *thd, const char *db, const char *table,
   int rc;
 
   buf_err= wsrep_TOI_event_buf(thd, &buf, &buf_len);
+
   if (buf_err) {
     WSREP_ERROR("Failed to create TOI event buf: %d", buf_err);
     my_message(ER_UNKNOWN_ERROR,
@@ -1850,6 +1908,7 @@ static int wsrep_TOI_begin(THD *thd, const char *db, const char *table,
                MYF(0));
     return -1;
   }
+
   struct wsrep_buf buff= { buf, buf_len };
 
   wsrep::key_array key_array=
@@ -1860,7 +1919,7 @@ static int wsrep_TOI_begin(THD *thd, const char *db, const char *table,
     /* non replicated DDL, affecting temporary tables only */
     WSREP_DEBUG("TO isolation skipped, sql: %s."
                 "Only temporary tables affected.",
-                WSREP_QUERY(thd));
+                wsrep_get_query_or_msg(thd));
     if (buf) my_free(buf);
     return -1;
   }
@@ -1868,6 +1927,7 @@ static int wsrep_TOI_begin(THD *thd, const char *db, const char *table,
   thd_proc_info(thd, "acquiring total order isolation");
 
   wsrep::client_state& cs(thd->wsrep_cs());
+
   int ret= cs.enter_toi_local(key_array,
                               wsrep::const_buffer(buff.ptr, buff.len),
                               wsrep::provider::flag::start_transaction |
@@ -1877,7 +1937,7 @@ static int wsrep_TOI_begin(THD *thd, const char *db, const char *table,
   {
     DBUG_ASSERT(cs.current_error());
     WSREP_DEBUG("to_execute_start() failed for %llu: %s, seqno: %lld",
-                thd->thread_id, WSREP_QUERY(thd),
+                thd->thread_id, wsrep_get_query_or_msg(thd),
                 (long long)wsrep_thd_trx_seqno(thd));
 
     /* jump to error handler in mysql_execute_command() */
@@ -1888,7 +1948,7 @@ static int wsrep_TOI_begin(THD *thd, const char *db, const char *table,
                  "Maximum size exceeded.",
                  ret,
                  (thd->db.str ? thd->db.str : "(null)"),
-                 WSREP_QUERY(thd));
+                 wsrep_get_query_or_msg(thd));
       my_error(ER_ERROR_DURING_COMMIT, MYF(0), WSREP_SIZE_EXCEEDED);
       break;
     default:
@@ -1896,7 +1956,7 @@ static int wsrep_TOI_begin(THD *thd, const char *db, const char *table,
                  "Check wsrep connection state and retry the query.",
                  ret,
                  (thd->db.str ? thd->db.str : "(null)"),
-                 WSREP_QUERY(thd));
+                 wsrep_get_query_or_msg(thd));
       if (!thd->is_error())
       {
         my_error(ER_LOCK_DEADLOCK, MYF(0), "WSREP replication failed. Check "
@@ -1905,7 +1965,8 @@ static int wsrep_TOI_begin(THD *thd, const char *db, const char *table,
     }
     rc= -1;
   }
-  else {
+  else
+  {
     ++wsrep_to_isolation;
     rc= 0;
   }
@@ -1922,7 +1983,7 @@ static void wsrep_TOI_end(THD *thd) {
   wsrep::client_state& client_state(thd->wsrep_cs());
   DBUG_ASSERT(wsrep_thd_is_local_toi(thd));
   WSREP_DEBUG("TO END: %lld: %s", client_state.toi_meta().seqno().get(),
-              WSREP_QUERY(thd));
+              wsrep_get_query_or_msg(thd));
 
   if (wsrep_thd_is_local_toi(thd))
   {
@@ -1935,7 +1996,7 @@ static void wsrep_TOI_end(THD *thd) {
     else
     {
       WSREP_WARN("TO isolation end failed for: %d, schema: %s, sql: %s",
-                 ret, (thd->db.str ? thd->db.str : "(null)"), WSREP_QUERY(thd));
+                 ret, (thd->db.str ? thd->db.str : "(null)"), wsrep_get_query_or_msg(thd));
     }
   }
 }
@@ -1943,7 +2004,7 @@ static void wsrep_TOI_end(THD *thd) {
 static int wsrep_RSU_begin(THD *thd, const char *db_, const char *table_)
 {
   WSREP_DEBUG("RSU BEGIN: %lld, : %s", wsrep_thd_trx_seqno(thd),
-              WSREP_QUERY(thd));
+              wsrep_get_query_or_msg(thd));
   if (thd->wsrep_cs().begin_rsu(5000))
   {
     WSREP_WARN("RSU begin failed");
@@ -1958,7 +2019,7 @@ static int wsrep_RSU_begin(THD *thd, const char *db_, const char *table_)
 static void wsrep_RSU_end(THD *thd)
 {
   WSREP_DEBUG("RSU END: %lld : %s", wsrep_thd_trx_seqno(thd),
-              WSREP_QUERY(thd));
+              wsrep_get_query_or_msg(thd));
   if (thd->wsrep_cs().end_rsu())
   {
     WSREP_WARN("Failed to end RSU, server may need to be restarted");
@@ -1968,7 +2029,8 @@ static void wsrep_RSU_end(THD *thd)
 
 int wsrep_to_isolation_begin(THD *thd, const char *db_, const char *table_,
                              const TABLE_LIST* table_list,
-                             Alter_info* alter_info)
+                             const Alter_info* alter_info,
+                             const HA_CREATE_INFO* create_info)
 {
   /*
     No isolation for applier or replaying threads.
@@ -1993,14 +2055,14 @@ int wsrep_to_isolation_begin(THD *thd, const char *db_, const char *table_,
   if (thd->global_read_lock.is_acquired())
   {
     WSREP_DEBUG("Aborting TOI: Global Read-Lock (FTWRL) in place: %s %llu",
-                WSREP_QUERY(thd), thd->thread_id);
+                wsrep_get_query_or_msg(thd), thd->thread_id);
     return -1;
   }
 
   if (wsrep_debug && thd->mdl_context.has_locks())
   {
     WSREP_DEBUG("thread holds MDL locks at TI begin: %s %llu",
-                WSREP_QUERY(thd), thd->thread_id);
+                wsrep_get_query_or_msg(thd), thd->thread_id);
   }
 
   /*
@@ -2018,24 +2080,25 @@ int wsrep_to_isolation_begin(THD *thd, const char *db_, const char *table_,
 
   if (thd->variables.wsrep_on && wsrep_thd_is_local(thd))
   {
-    switch (thd->variables.wsrep_OSU_method) {
+    switch (wsrep_OSU_method_get(thd)) {
     case WSREP_OSU_TOI:
-      ret= wsrep_TOI_begin(thd, db_, table_, table_list, alter_info);
+    case WSREP_OSU_STRICT:
+      ret= wsrep_TOI_begin(thd, db_, table_, table_list, alter_info, create_info);
       break;
     case WSREP_OSU_RSU:
       ret= wsrep_RSU_begin(thd, db_, table_);
       break;
     default:
       WSREP_ERROR("Unsupported OSU method: %lu",
-                  thd->variables.wsrep_OSU_method);
+                  wsrep_OSU_method_get(thd));
       ret= -1;
       break;
     }
     switch (ret) {
-    case 0: /* wsrep_TOI_begin sould set toi mode */ break;
+    case 0: /* wsrep_TOI_begin should set toi mode */ break;
     case 1:
-      /* TOI replication skipped, treat as success */
-      ret= 0;
+        /* TOI replication skipped, treat as success */
+        ret= 0;
       break;
     case -1:
       /* TOI replication failed, treat as error */
@@ -2052,12 +2115,13 @@ void wsrep_to_isolation_end(THD *thd)
               wsrep_thd_is_in_rsu(thd));
   if (wsrep_thd_is_local_toi(thd))
   {
-    DBUG_ASSERT(thd->variables.wsrep_OSU_method == WSREP_OSU_TOI);
+    DBUG_ASSERT(wsrep_OSU_method_get(thd) == WSREP_OSU_TOI ||
+                wsrep_OSU_method_get(thd) == WSREP_OSU_STRICT);
     wsrep_TOI_end(thd);
   }
   else if (wsrep_thd_is_in_rsu(thd))
   {
-    DBUG_ASSERT(thd->variables.wsrep_OSU_method == WSREP_OSU_RSU);
+    DBUG_ASSERT(wsrep_OSU_method_get(thd) == WSREP_OSU_RSU);
     wsrep_RSU_end(thd);
   }
   else
@@ -2500,17 +2564,17 @@ bool wsrep_create_like_table(THD* thd, TABLE_LIST* table,
   if (create_info->tmp_table())
   {
     /* CREATE TEMPORARY TABLE LIKE must be skipped from replication */
-    WSREP_DEBUG("CREATE TEMPORARY TABLE LIKE... skipped replication\n %s", 
+    WSREP_DEBUG("CREATE TEMPORARY TABLE LIKE... skipped replication\n %s",
                 thd->query());
   }
   else if (!(thd->find_temporary_table(src_table)))
   {
     /* this is straight CREATE TABLE LIKE... with no tmp tables */
-    WSREP_TO_ISOLATION_BEGIN(table->db.str, table->table_name.str, NULL);
+    WSREP_TO_ISOLATION_BEGIN_CREATE(table->db.str, table->table_name.str, table, create_info);
   }
   else
   {
-    /* here we have CREATE TABLE LIKE <temporary table> 
+    /* here we have CREATE TABLE LIKE <temporary table>
        the temporary table definition will be needed in slaves to
        enable the create to succeed
      */
@@ -2529,7 +2593,7 @@ bool wsrep_create_like_table(THD* thd, TABLE_LIST* table,
     thd->wsrep_TOI_pre_query=     query.ptr();
     thd->wsrep_TOI_pre_query_len= query.length();
 
-    WSREP_TO_ISOLATION_BEGIN(table->db.str, table->table_name.str, NULL);
+    WSREP_TO_ISOLATION_BEGIN_CREATE(table->db.str, table->table_name.str, table, create_info);
 
     thd->wsrep_TOI_pre_query=      NULL;
     thd->wsrep_TOI_pre_query_len= 0;
