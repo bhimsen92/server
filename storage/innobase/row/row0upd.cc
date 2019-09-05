@@ -3197,7 +3197,6 @@ row_upd_clust_step(
 
 	if (!node->is_delete && node->cmpl_info & UPD_NODE_NO_ORD_CHANGE) {
 
-		node->index = NULL;
 		err = row_upd_clust_rec(
 			flags, node, index, offsets, &heap, thr, &mtr);
 		goto exit_func;
