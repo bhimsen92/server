@@ -7618,7 +7618,8 @@ double table_cond_selectivity(JOIN *join, uint idx, JOIN_TAB *s,
     KEYUSE *keyuse= pos->key;
     KEYUSE *prev_ref_keyuse= keyuse;
     uint key= keyuse->key;
-    bool used_range_selectivity= false;
+    KEY *keyinfo= table->key_info + key;
+    bitmap_clear_all(&table->tmp_set);
     
     /*
       Check if we have a prefix of key=const that matches a quick select.
@@ -7629,19 +7630,17 @@ double table_cond_selectivity(JOIN *join, uint idx, JOIN_TAB *s,
       if (table->quick_rows[key] && 
           !(quick_key_map & ~table->const_key_parts[key]))
       {
-        /* 
-          Ok, there is an equality for each of the key parts used by the
-          quick select. This means, quick select's estimate can be reused to
-          discount the selectivity of a prefix of a ref access.
+        KEY_PART_INFO *keypart= keyinfo->key_part;
+        /*
+          Set the bitmap tmp_set for all the fields of type field=const
+          in the chosen ref access. These are the fields for which we will
+          discount the selectivity.
         */
-        for (; quick_key_map & 1 ; quick_key_map>>= 1)
+
+        for (uint i= 0; i < table->quick_key_parts[key]; i++, keypart++)
         {
-          while (keyuse->table == table && keyuse->key == key && 
-                 keyuse->keypart == keyparts)
-          {
-            keyuse++;
-          }
-          keyparts++;
+          Field *field= keypart->field;
+          bitmap_set_bit(&table->tmp_set, field->field_index);
         }
         /*
           Here we discount selectivity of the constant range CR. To calculate
@@ -7656,7 +7655,6 @@ double table_cond_selectivity(JOIN *join, uint idx, JOIN_TAB *s,
         sel /= (double)table->quick_rows[key] / (double) table->stat_records();
         DBUG_ASSERT(0 < sel && sel <= 2.0);
         set_if_smaller(sel, 1.0);
-        used_range_selectivity= true;
       }
     }
     
@@ -7692,7 +7690,7 @@ double table_cond_selectivity(JOIN *join, uint idx, JOIN_TAB *s,
           if (keyparts > keyuse->keypart)
 	  {
             /* Ok this is the keyuse that will be used for ref access */
-            if (!used_range_selectivity && keyuse->val->const_item())
+            if (keyuse->val->const_item())
             { 
               uint fldno;
               if (is_hash_join_key_no(key))
@@ -7700,9 +7698,11 @@ double table_cond_selectivity(JOIN *join, uint idx, JOIN_TAB *s,
               else
                 fldno= table->key_info[key].key_part[keyparts-1].fieldnr - 1;
 
-              if (table->field[fldno]->cond_selectivity > 0)
-	      {            
+              if (!bitmap_is_set(&table->tmp_set, fldno) &&
+                  table->field[fldno]->cond_selectivity > 0)
+              {
                 sel /= table->field[fldno]->cond_selectivity;
+                bitmap_set_bit(&table->tmp_set, fldno);
                 DBUG_ASSERT(0 < sel && sel <= 2.0);
                 set_if_smaller(sel, 1.0);
               }
@@ -7750,6 +7750,7 @@ double table_cond_selectivity(JOIN *join, uint idx, JOIN_TAB *s,
     for (Field **f_ptr=table->field ; (field= *f_ptr) ; f_ptr++)
     {
       if (!bitmap_is_set(read_set, field->field_index) ||
+          bitmap_is_set(&table->tmp_set, field->field_index) ||
           !field->next_equal_field)
         continue; 
       for (Field *next_field= field->next_equal_field; 
@@ -7761,6 +7762,7 @@ double table_cond_selectivity(JOIN *join, uint idx, JOIN_TAB *s,
           if (field->cond_selectivity > 0)
 	  {
             sel/= field->cond_selectivity;
+            bitmap_set_bit(&table->tmp_set, field->field_index);
             DBUG_ASSERT(0 < sel && sel <= 2.0);  
             set_if_smaller(sel, 1.0);
           }

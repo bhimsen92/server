@@ -1205,5 +1205,28 @@ set optimizer_use_condition_selectivity=@save_optimizer_use_condition_selectivit
 
 DROP TABLE t1;
 
+--echo #
+--echo # MDEV-20595: Assertion `0 < sel && sel <= 2.0' failed in table_cond_selectivity
+--echo #
+
+create table t1 (id int, a int, PRIMARY KEY(id), key(a));
+insert into t1 select seq,seq from seq_1_to_100;
+
+create table t2 (id int, a int, b int, PRIMARY KEY(id), key(a), key(b));
+insert into t2 select seq,seq,seq from seq_1_to_100;
+
+let $query= SELECT * FROM t1 A, t1 B WHERE A.a = B.a and A.id= 65;
+
+set optimizer_use_condition_selectivity=1;
+eval explain $query;
+eval $query;
+
+set optimizer_use_condition_selectivity=2;
+eval explain $query;
+eval $query;
+
+set optimizer_use_condition_selectivity=@save_optimizer_use_condition_selectivity;
+drop table t1,t2;
+
 --echo # End of 10.1 tests
 
